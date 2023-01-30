@@ -64,11 +64,11 @@ pub struct LogFileHeader {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Log {
-    ts: u64,
-    id: u64,
+    pub ts: u64,
+    pub id: u64,
 
-    key: Vec<u8>,
-    value: Vec<u8>,
+    pub key: Vec<u8>,
+    pub value: Vec<u8>,
 }
 
 impl_from_bytes!(Log);
@@ -82,8 +82,8 @@ pub type Indexes = HashMap<
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct IndexFile {
-    magic_number: u64,
-    indexes: Indexes,
+    pub magic_number: u64,
+    pub indexes: Indexes,
 }
 
 pub type Timestamps = BTreeMap<
@@ -93,8 +93,8 @@ pub type Timestamps = BTreeMap<
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct TimestampFile {
-    magic_number: u64,
-    timestamps: Timestamps,
+    pub magic_number: u64,
+    pub timestamps: Timestamps,
 }
 
 impl_from_bytes!(IndexFile);
