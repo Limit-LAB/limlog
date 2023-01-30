@@ -75,7 +75,7 @@ impl_from_bytes!(Log);
 impl_from_bytes!(LogFile);
 impl_from_bytes!(LogFileHeader);
 
-pub type Indexes = HashMap<
+pub type Indexes = BTreeMap<
     u64, // ID
     u64, // OFFSET
 >;
