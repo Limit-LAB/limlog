@@ -2,3 +2,6 @@
 
 pub mod formats;
 pub mod ops;
+
+#[cfg(test)]
+mod tests;

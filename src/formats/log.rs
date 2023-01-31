@@ -1,12 +1,6 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
-use anyhow::{anyhow, Result};
-use bytes::{Buf, BytesMut};
 use serde::{Deserialize, Serialize};
-use tokio::{
-    fs::File,
-    io::{AsyncReadExt, BufReader},
-};
 
 // log file format:
 // MAGIC_NUMBER 8 bytes
@@ -48,6 +42,16 @@ macro_rules! impl_from_bytes {
     };
 }
 
+macro_rules! impl_into_bytes {
+    ($class:ty) => {
+        impl $class {
+            pub fn into_bytes(self) -> std::result::Result<Vec<u8>, bincode::Error> {
+                bincode::serialize(&self)
+            }
+        }
+    };
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct LogFile {
     pub header: LogFileHeader,
@@ -75,6 +79,12 @@ impl_from_bytes!(Log);
 impl_from_bytes!(LogFile);
 impl_from_bytes!(LogFileHeader);
 
+impl_into_bytes!(Log);
+impl_into_bytes!(LogFile);
+impl_into_bytes!(LogFileHeader);
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub(crate) struct Index(pub u64, pub u64);
 pub type Indexes = BTreeMap<
     u64, // ID
     u64, // OFFSET
@@ -86,6 +96,8 @@ pub struct IndexFile {
     pub indexes: Indexes,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub(crate) struct Timestamp(pub u64, pub u64);
 pub type Timestamps = BTreeMap<
     u64, // TS
     u64, // OFFSET
@@ -97,5 +109,12 @@ pub struct TimestampFile {
     pub timestamps: Timestamps,
 }
 
+impl_from_bytes!(Index);
 impl_from_bytes!(IndexFile);
+impl_from_bytes!(Timestamp);
 impl_from_bytes!(TimestampFile);
+
+impl_into_bytes!(Index);
+impl_into_bytes!(IndexFile);
+impl_into_bytes!(Timestamp);
+impl_into_bytes!(TimestampFile);

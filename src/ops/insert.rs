@@ -1,6 +1,4 @@
-struct InsertOperator {
 
-}
 
 // insert into cache
 
