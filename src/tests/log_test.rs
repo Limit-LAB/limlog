@@ -1,6 +1,6 @@
-use crate::formats::log::{Log, LogFile, LogFileHeader};
+use crate::formats::log::{Log, LogFileHeader};
 
-const log1: [u8; 34] = [
+const LOG1: [u8; 34] = [
     0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ts
     0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // id
     0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // key length
@@ -8,7 +8,7 @@ const log1: [u8; 34] = [
     0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // value length
     0x0A, // value
 ];
-const log2: [u8; 34] = [
+const LOG2: [u8; 34] = [
     0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ts
     0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // id
     0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // key length
@@ -16,7 +16,7 @@ const log2: [u8; 34] = [
     0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // value length
     0x0B, // value
 ];
-const log3: [u8; 34] = [
+const LOG3: [u8; 34] = [
     0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ts
     0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // id
     0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // key length
@@ -25,7 +25,7 @@ const log3: [u8; 34] = [
     0x0C, // value
 ];
 
-const log_header: [u8; 24] = [
+const LOG_HEADER: [u8; 24] = [
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // magic
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // attributes
     0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // entry_count
@@ -34,15 +34,45 @@ const log_header: [u8; 24] = [
 
 #[test]
 fn test_log_format() {
-    let l1 = Log::try_from(&log1[..]).unwrap();
-    let l2 = Log::try_from(&log2[..]).unwrap();
-    let l3 = Log::try_from(&log3[..]).unwrap();
-    let lh = LogFileHeader::try_from(&log_header[..]).unwrap();
-    let log_file = LogFile {
-        header: lh,
-        logs: vec![l1, l2, l3],
-    };
-    let log_file_bytes = bincode::serialize(&log_file).unwrap();
-    let log_file2 = LogFile::try_from(&log_file_bytes[..]).unwrap();
-    assert_eq!(log_file, log_file2);
+    let l1 = Log::try_from(&LOG1[..]).unwrap();
+    let l2 = Log::try_from(&LOG2[..]).unwrap();
+    let l3 = Log::try_from(&LOG3[..]).unwrap();
+    let lh = LogFileHeader::try_from(&LOG_HEADER[..]).unwrap();
+
+    assert_eq!(
+        Log {
+            ts: 1,
+            id: 1,
+            key: vec![1],
+            value: vec![10]
+        },
+        l1
+    );
+    assert_eq!(
+        Log {
+            ts: 2,
+            id: 2,
+            key: vec![2],
+            value: vec![11]
+        },
+        l2
+    );
+    assert_eq!(
+        Log {
+            ts: 3,
+            id: 3,
+            key: vec![3],
+            value: vec![12]
+        },
+        l3
+    );
+
+    assert_eq!(
+        LogFileHeader {
+            magic_number: 18446744073709551615,
+            attributes: 0,
+            entry_count: 3
+        },
+        lh
+    );
 }
