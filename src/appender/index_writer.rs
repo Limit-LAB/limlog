@@ -25,6 +25,7 @@ impl<T: Serialize + Send + Sync + 'static> IndexWriter<T> {
         let (sender, receiver) = channel::bounded(8);
         let file = File::options()
             .append(true)
+            .create(true)
             .open(path.as_ref().join(format!("{file_name}.{suffix}")))?;
 
         let file_size = file.metadata()?.len();

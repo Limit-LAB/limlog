@@ -1,5 +1,6 @@
 use anyhow::{anyhow, ensure, Result};
 use crossbeam::channel::{self, Receiver, Sender};
+use positioned_io::{ReadAt, WriteAt};
 use std::{
     fs::File,
     io::Write,
@@ -31,6 +32,8 @@ impl LogWriter {
         let (sender, receiver) = channel::bounded(8);
         let file = File::options()
             .append(true)
+            .create(true)
+            .read(true)
             .open(path.as_ref().join(format!("{file_name}.limlog")))?;
 
         let file_size = file.metadata()?.len();
@@ -79,6 +82,8 @@ impl LogWriter {
             file_size.store(24, Ordering::Release);
         }
 
+        let mut log_count = 0;
+
         while let Ok(logs) = receiver.recv() {
             let mut buf = Vec::with_capacity(1024);
             let mut idx = Vec::with_capacity(logs.len());
@@ -93,6 +98,7 @@ impl LogWriter {
 
                 buf.write_all(&bytes).unwrap();
                 file_size.fetch_add(bytes.len() as u64, Ordering::AcqRel);
+                log_count += 1;
             }
 
             idx_writer.append_log_indexes(idx)?;
@@ -101,6 +107,20 @@ impl LogWriter {
             log_file.write_all(&buf)?;
             log_file.sync_data()?;
         }
+
+        Self::update_header(&mut log_file, log_count)?;
+
+        Ok(())
+    }
+
+    fn update_header(log_file: &mut File, log_count: u64) -> Result<()> {
+        let mut buf = Box::new([0u8; size_of::<LogFileHeader>()]);
+        log_file.read_at(0, buf.as_mut_slice())?;
+
+        let mut header = LogFileHeader::try_from(buf.as_slice())?;
+        header.entry_count += log_count;
+
+        log_file.write_at(0, &bincode::serialize(&header)?)?;
 
         Ok(())
     }
