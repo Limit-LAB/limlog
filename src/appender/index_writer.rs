@@ -22,7 +22,7 @@ impl<T: Serialize + Send + Sync + 'static> IndexWriter<T> {
         file_name: impl Display,
         suffix: impl Display,
     ) -> Result<Self> {
-        let (sender, receiver) = channel::unbounded();
+        let (sender, receiver) = channel::bounded(8);
         let file = File::options()
             .append(true)
             .open(path.as_ref().join(format!("{file_name}.{suffix}")))?;
@@ -50,7 +50,7 @@ impl<T: Serialize + Send + Sync + 'static> IndexWriter<T> {
 
     fn exec(mut index_file: File, receiver: Receiver<Vec<T>>) -> Result<()> {
         while let Ok(indexes) = receiver.recv() {
-            let mut buf = Vec::with_capacity(1024);
+            let mut buf = Vec::with_capacity(256);
 
             for index in indexes {
                 let bytes = bincode::serialize(&index).unwrap();

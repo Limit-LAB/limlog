@@ -108,8 +108,8 @@ impl LogAppender {
         Ok(())
     }
 
-    fn flush(&self) -> Result<()> {
-        let mut logs = Vec::with_capacity(128);
+    pub fn flush(&self) -> Result<()> {
+        let mut logs = Vec::with_capacity(self.inner.queue.len());
 
         while let Some(log) = self.inner.queue.pop() {
             logs.push(log);

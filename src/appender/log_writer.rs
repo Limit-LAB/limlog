@@ -3,6 +3,7 @@ use crossbeam::channel::{self, Receiver, Sender};
 use std::{
     fs::File,
     io::Write,
+    mem::size_of,
     path::Path,
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -27,13 +28,16 @@ pub struct LogWriter {
 
 impl LogWriter {
     pub fn new(path: impl AsRef<Path>, file_name: String) -> Result<LogWriter> {
-        let (sender, receiver) = channel::unbounded();
+        let (sender, receiver) = channel::bounded(8);
         let file = File::options()
             .append(true)
             .open(path.as_ref().join(format!("{file_name}.limlog")))?;
 
         let file_size = file.metadata()?.len();
-        ensure!(file_size == 0 || file_size > 24, "Invalid log file");
+        ensure!(
+            file_size == 0 || file_size > size_of::<LogFileHeader>() as u64,
+            "Invalid log file"
+        );
 
         let idx_writer = IndexWriter::new(path.as_ref(), &file_name, "idx")?;
         let ts_idx_writer = IndexWriter::new(path.as_ref(), &file_name, "ts.idx")?;
@@ -77,8 +81,8 @@ impl LogWriter {
 
         while let Ok(logs) = receiver.recv() {
             let mut buf = Vec::with_capacity(1024);
-            let mut idx = Vec::with_capacity(128);
-            let mut ts_idx = Vec::with_capacity(128);
+            let mut idx = Vec::with_capacity(logs.len());
+            let mut ts_idx = Vec::with_capacity(logs.len());
 
             for log in logs {
                 let size = file_size.load(Ordering::Acquire);
