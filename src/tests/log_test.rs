@@ -1,4 +1,4 @@
-use crate::formats::log::{Log, LogFile, LogFileHeader};
+use crate::formats::log::{Log, LogFileHeader};
 
 const LOG1: [u8; 34] = [
     0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ts
@@ -38,11 +38,41 @@ fn test_log_format() {
     let l2 = Log::try_from(&LOG2[..]).unwrap();
     let l3 = Log::try_from(&LOG3[..]).unwrap();
     let lh = LogFileHeader::try_from(&LOG_HEADER[..]).unwrap();
-    let log_file = LogFile {
-        header: lh,
-        logs: vec![l1, l2, l3],
-    };
-    let log_file_bytes = bincode::serialize(&log_file).unwrap();
-    let log_file2 = LogFile::try_from(&log_file_bytes[..]).unwrap();
-    assert_eq!(log_file, log_file2);
+
+    assert_eq!(
+        Log {
+            ts: 1,
+            id: 1,
+            key: vec![1],
+            value: vec![10]
+        },
+        l1
+    );
+    assert_eq!(
+        Log {
+            ts: 2,
+            id: 2,
+            key: vec![2],
+            value: vec![11]
+        },
+        l2
+    );
+    assert_eq!(
+        Log {
+            ts: 3,
+            id: 3,
+            key: vec![3],
+            value: vec![12]
+        },
+        l3
+    );
+
+    assert_eq!(
+        LogFileHeader {
+            magic_number: 18446744073709551615,
+            attributes: 0,
+            entry_count: 3
+        },
+        lh
+    );
 }
