@@ -1,13 +1,13 @@
 #![feature(generic_arg_infer)]
 
-use std::{fs, path::Path};
-
 pub mod appender;
 
 pub mod formats;
 
 pub use appender::LogAppender;
 pub use formats::log::Log;
+
+use std::{fs, path::Path};
 
 #[derive(Clone, Copy, Debug)]
 struct LogEntry {
