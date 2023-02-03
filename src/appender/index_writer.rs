@@ -1,5 +1,5 @@
 use anyhow::{anyhow, ensure, Result};
-use crossbeam::channel::{self, Receiver, Sender};
+use kanal::{bounded, Receiver, Sender};
 use positioned_io::ReadAt;
 use serde::Serialize;
 use std::{fs::File, io::Write, mem::size_of, path::Path, thread};
@@ -13,7 +13,6 @@ pub(crate) struct IndexWriter<T: Serialize + Send + Sync + 'static> {
 
 impl<T: Serialize + Send + Sync + 'static> IndexWriter<T> {
     pub(crate) fn new(path: impl AsRef<Path>, header: IndexFileHeader) -> Result<Self> {
-        let (sender, receiver) = channel::bounded(8);
         let file = File::options()
             .append(true)
             .create(true)
@@ -26,6 +25,7 @@ impl<T: Serialize + Send + Sync + 'static> IndexWriter<T> {
             "Invalid log index file"
         );
 
+        let (sender, receiver) = bounded(8);
         thread::spawn(move || Self::exec(file, file_size, receiver, header));
 
         Ok(Self { sender })

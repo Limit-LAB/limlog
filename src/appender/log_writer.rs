@@ -1,5 +1,5 @@
 use anyhow::{ensure, Result};
-use crossbeam::channel::{self, Receiver, Sender};
+use kanal::{bounded, Receiver, Sender};
 use positioned_io::{ReadAt, WriteAt};
 use std::{
     fs::File,
@@ -46,7 +46,7 @@ impl LogWriter {
             path.as_ref().join(format!("{file_name}.ts.idx")),
             TS_INDEX_HEADER,
         )?;
-        let (sender, receiver) = channel::bounded(8);
+        let (sender, receiver) = bounded(8);
 
         let file_size = Arc::new(AtomicU64::new(file_size));
         let file_size_view = file_size.clone();

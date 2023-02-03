@@ -2,7 +2,7 @@ mod index_writer;
 mod log_writer;
 
 use anyhow::{anyhow, ensure, Result};
-use crossbeam::queue::ArrayQueue;
+use crossbeam_queue::ArrayQueue;
 use once_cell::sync::OnceCell;
 use std::{
     path::{Path, PathBuf},
