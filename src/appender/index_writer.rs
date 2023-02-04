@@ -12,7 +12,26 @@ pub(crate) struct IndexWriter<T: Serialize + Send + Sync + 'static> {
 }
 
 impl<T: Serialize + Send + Sync + 'static> IndexWriter<T> {
-    pub(crate) fn new(path: impl AsRef<Path>, header: IndexFileHeader) -> Result<Self> {
+    pub(crate) fn new(path: impl AsRef<Path>, expected_header: IndexFileHeader) -> Result<Self> {
+        let (file, file_size) = Self::open_file(path)?;
+        let (sender, receiver) = bounded(8);
+        let inner = IndexWriterInner {
+            file,
+            file_size,
+            receiver,
+            expected_header,
+        };
+        thread::spawn(move || inner.exec());
+
+        Ok(Self { sender })
+    }
+
+    pub(crate) fn append_log_indexes(&self, indexes: Vec<T>) -> Result<()> {
+        Ok(self.sender.send(indexes)?)
+    }
+
+    #[inline]
+    fn open_file(path: impl AsRef<Path>) -> Result<(File, u64)> {
         let file = File::options()
             .append(true)
             .create(true)
@@ -25,26 +44,22 @@ impl<T: Serialize + Send + Sync + 'static> IndexWriter<T> {
             "Invalid log index file"
         );
 
-        let (sender, receiver) = bounded(8);
-        thread::spawn(move || Self::exec(file, file_size, receiver, header));
-
-        Ok(Self { sender })
+        Ok((file, file_size))
     }
+}
 
-    pub(crate) fn append_log_indexes(&self, indexes: Vec<T>) -> Result<()> {
-        self.sender.send(indexes)?;
-        Ok(())
-    }
+struct IndexWriterInner<T: Serialize + Send + Sync + 'static> {
+    file: File,
+    file_size: u64,
+    receiver: Receiver<Vec<T>>,
+    expected_header: IndexFileHeader,
+}
 
-    fn exec(
-        mut index_file: File,
-        file_size: u64,
-        receiver: Receiver<Vec<T>>,
-        header: IndexFileHeader,
-    ) -> Result<()> {
-        Self::check_or_init_header(&mut index_file, file_size, header)?;
+impl<T: Serialize + Send + Sync + 'static> IndexWriterInner<T> {
+    fn exec(mut self) -> Result<()> {
+        self.check_or_init_header()?;
 
-        while let Ok(indexes) = receiver.recv() {
+        while let Ok(indexes) = self.receiver.recv() {
             let mut buf = Vec::with_capacity(256);
 
             for index in indexes {
@@ -52,28 +67,25 @@ impl<T: Serialize + Send + Sync + 'static> IndexWriter<T> {
                 buf.write_all(&bytes).unwrap();
             }
 
-            index_file.write_all(&buf)?;
-            index_file.sync_data()?;
+            self.file.write_all(&buf)?;
+            self.file.sync_data()?;
         }
 
         Ok(())
     }
 
-    fn check_or_init_header(
-        index_file: &mut File,
-        file_size: u64,
-        header: IndexFileHeader,
-    ) -> Result<()> {
-        if file_size == 0 {
-            index_file.write_all(&bincode::serialize(&header)?)?;
-            index_file.sync_data()?;
+    fn check_or_init_header(&mut self) -> Result<()> {
+        if self.file_size == 0 {
+            self.file
+                .write_all(&bincode::serialize(&self.expected_header)?)?;
+            self.file.sync_data()?;
 
             Ok(())
         } else {
             let mut buf = Box::new([0u8; size_of::<IndexFileHeader>()]);
-            index_file.read_at(0, buf.as_mut_slice())?;
+            self.file.read_at(0, buf.as_mut_slice())?;
 
-            (IndexFileHeader::try_from(buf.as_slice())? == header)
+            (IndexFileHeader::try_from(buf.as_slice())? == self.expected_header)
                 .then_some(())
                 .ok_or(anyhow!("Invalid file header"))
         }
