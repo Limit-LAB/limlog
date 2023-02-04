@@ -1,24 +1,20 @@
 use anyhow::{anyhow, ensure, Result};
 use kanal::{bounded, Receiver, Sender};
-use positioned_io::ReadAt;
-use serde::Serialize;
-use std::{fs::File, io::Write, mem::size_of, path::Path, thread};
+use std::{mem::size_of, slice::from_raw_parts, thread};
 
-use crate::formats::log::IndexFileHeader;
+use crate::{
+    formats::log::IndexFileHeader,
+    util::{BlockIODevice, LogItem},
+};
 
 #[derive(Debug)]
-pub(crate) struct IndexWriter<T: Serialize + Send + Sync + 'static> {
+pub(crate) struct IndexWriter<T> {
     sender: Sender<Vec<T>>,
 }
 
-impl<T: Serialize + Send + Sync + 'static> IndexWriter<T> {
-    pub(crate) fn new(path: impl AsRef<Path>, header: IndexFileHeader) -> Result<Self> {
-        let file = File::options()
-            .append(true)
-            .create(true)
-            .open(path.as_ref())?;
-
-        let file_size = file.metadata()?.len();
+impl<T: LogItem> IndexWriter<T> {
+    pub(crate) fn new(file: impl BlockIODevice, expected_header: IndexFileHeader) -> Result<Self> {
+        let file_size = file.len()?;
         ensure!(
             file_size == 0
                 || (file_size - size_of::<IndexFileHeader>() as u64) % size_of::<T>() as u64 == 0,
@@ -26,54 +22,67 @@ impl<T: Serialize + Send + Sync + 'static> IndexWriter<T> {
         );
 
         let (sender, receiver) = bounded(8);
-        thread::spawn(move || Self::exec(file, file_size, receiver, header));
+        let inner = IndexWriterInner {
+            file,
+            file_size,
+            receiver,
+            expected_header,
+        };
+        thread::spawn(move || inner.exec());
 
         Ok(Self { sender })
     }
 
     pub(crate) fn append_log_indexes(&self, indexes: Vec<T>) -> Result<()> {
-        self.sender.send(indexes)?;
-        Ok(())
+        Ok(self.sender.send(indexes)?)
     }
+}
 
-    fn exec(
-        mut index_file: File,
-        file_size: u64,
-        receiver: Receiver<Vec<T>>,
-        header: IndexFileHeader,
-    ) -> Result<()> {
-        Self::check_or_init_header(&mut index_file, file_size, header)?;
+struct IndexWriterInner<F, T> {
+    file: F,
+    file_size: u64,
+    receiver: Receiver<Vec<T>>,
+    expected_header: IndexFileHeader,
+}
 
-        while let Ok(indexes) = receiver.recv() {
-            let mut buf = Vec::with_capacity(256);
+impl<F: BlockIODevice, T: LogItem> IndexWriterInner<F, T> {
+    fn exec(mut self) -> Result<()> {
+        self.check_or_init_header()?;
 
-            for index in indexes {
-                let bytes = bincode::serialize(&index).unwrap();
-                buf.write_all(&bytes).unwrap();
-            }
+        while let Ok(indexes) = self.receiver.recv() {
+            // let mut buf = Vec::with_capacity(256);
 
-            index_file.write_all(&buf)?;
-            index_file.sync_data()?;
+            // for index in indexes {
+            //     let bytes = bincode::serialize(&index).unwrap();
+            //     buf.write_all(&bytes).unwrap();
+            // }
+
+            let buf = unsafe {
+                from_raw_parts(
+                    indexes.as_ptr() as *const u8,
+                    indexes.len() * size_of::<T>(),
+                )
+            };
+
+            self.file.write_all(&buf)?;
+            self.file.sync_data()?;
         }
 
         Ok(())
     }
 
-    fn check_or_init_header(
-        index_file: &mut File,
-        file_size: u64,
-        header: IndexFileHeader,
-    ) -> Result<()> {
-        if file_size == 0 {
-            index_file.write_all(&bincode::serialize(&header)?)?;
-            index_file.sync_data()?;
+    fn check_or_init_header(&mut self) -> Result<()> {
+        if self.file_size == 0 {
+            self.file
+                .write_all(&bincode::serialize(&self.expected_header)?)?;
+            self.file.sync_data()?;
 
             Ok(())
         } else {
-            let mut buf = Box::new([0u8; size_of::<IndexFileHeader>()]);
-            index_file.read_at(0, buf.as_mut_slice())?;
+            let mut buf = [0u8; size_of::<IndexFileHeader>()];
+            self.file.read_at(0, buf.as_mut_slice())?;
 
-            (IndexFileHeader::try_from(buf.as_slice())? == header)
+            (IndexFileHeader::try_from(buf.as_slice())? == self.expected_header)
                 .then_some(())
                 .ok_or(anyhow!("Invalid file header"))
         }

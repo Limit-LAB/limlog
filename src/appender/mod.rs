@@ -1,15 +1,15 @@
 mod index_writer;
 mod log_writer;
 
-use anyhow::{anyhow, ensure, Result};
+use anyhow::{anyhow, ensure, Ok, Result};
 use crossbeam_queue::ArrayQueue;
-use once_cell::sync::OnceCell;
 use std::{
+    fs::File,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 
-use crate::{formats::log::Log, log_groups};
+use crate::{formats::log::Log, util::log_groups};
 
 use self::log_writer::LogWriter;
 
@@ -22,6 +22,7 @@ pub struct Builder {
 }
 
 impl Builder {
+    /// Creates a new builder for the [LogAppender] by given log directory.
     pub fn new(path: impl AsRef<Path>) -> Builder {
         Self {
             work_dir: path.as_ref().to_path_buf(),
@@ -31,21 +32,31 @@ impl Builder {
         }
     }
 
+    /// Set the buffer queue size, default is 128.
     pub fn queue_size(mut self, queue_size: usize) -> Builder {
         self.queue_size = queue_size;
         self
     }
 
+    /// Set the log file size threshold.
+    ///
+    /// A new log file will be created when the log file size exceeds the threshold.
+    /// default is 500 MiB.
     pub fn file_size_threshold(mut self, file_size_threshold: u64) -> Builder {
         self.file_size_threshold = file_size_threshold;
         self
     }
 
-    pub fn flush_percent(mut self, flush_percent: f32) -> Builder {
+    /// Set the flush percentage.
+    ///
+    /// [LogAppender] will automatically flush
+    /// when queue len exceeds the queue_size * flush_percentage.
+    pub fn flush_percentage(mut self, flush_percent: f32) -> Builder {
         self.flush_percent = flush_percent;
         self
     }
 
+    /// Build a [LogAppender].
     pub fn build(self) -> Result<LogAppender> {
         ensure!(self.work_dir.is_dir(), "Path must be a directory");
         ensure!(self.queue_size > 0, "Queue size must be greater than zero");
@@ -56,15 +67,17 @@ impl Builder {
 
         let writer = find_latest_log_group(&self.work_dir)
             .and_then(|(id, ts)| {
-                Some(OnceCell::with_value(
-                    LogWriter::new(&self.work_dir, format!("{id}_{ts}")).ok()?,
-                ))
+                let writer = OnceLock::new();
+                writer
+                    .set(LogAppender::create_log_group(&self.work_dir, id, ts).ok()?)
+                    .ok()?;
+                Some(writer)
             })
-            .unwrap_or_else(|| OnceCell::new());
+            .unwrap_or_else(|| OnceLock::new());
 
         Ok(LogAppender {
-            writer: Arc::new(writer),
             inner: Arc::new(LogAppenderInner {
+                writer,
                 work_dir: self.work_dir,
                 queue: ArrayQueue::new(self.queue_size),
                 flush_len: (self.queue_size as f32 * self.flush_percent) as _,
@@ -77,7 +90,16 @@ impl Builder {
 #[derive(Clone, Debug)]
 pub struct LogAppender {
     inner: Arc<LogAppenderInner>,
-    writer: Arc<OnceCell<LogWriter>>,
+}
+
+#[derive(Debug)]
+struct LogAppenderInner {
+    work_dir: PathBuf,
+    queue: ArrayQueue<Log>,
+    flush_len: usize,
+    file_size_threshold: u64,
+
+    writer: OnceLock<LogWriter>,
 }
 
 impl LogAppender {
@@ -85,11 +107,13 @@ impl LogAppender {
         Builder::new(path)
     }
 
+    /// Insert a log asynchronously.
     #[inline]
     pub fn insert(&self, log: Log) -> Result<()> {
         self.insert_batch(vec![log])
     }
 
+    /// Insert a log batch asynchronously.
     pub fn insert_batch(&self, batch: impl IntoIterator<Item = Log>) -> Result<()> {
         for log in batch {
             if let Err(log) = self.inner.queue.push(log) {
@@ -108,40 +132,43 @@ impl LogAppender {
         Ok(())
     }
 
+    /// Flush logs in the buffer queue to disk
     pub fn flush(&self) -> Result<()> {
         let mut logs = Vec::with_capacity(self.inner.queue.len());
-
         while let Some(log) = self.inner.queue.pop() {
             logs.push(log);
         }
 
         let Some(first) = logs.first() else { return Ok(()); };
-
-        if let Some(writer) = self.writer.get() {
+        if let Some(writer) = self.inner.writer.get() {
             if writer.file_size() >= self.inner.file_size_threshold {
-                _ = self.writer.set(LogWriter::new(
+                _ = self.inner.writer.set(Self::create_log_group(
                     &self.inner.work_dir,
-                    format!("{}_{}", first.id, first.ts),
+                    first.id,
+                    first.ts,
                 )?);
             }
         }
 
-        let writer = self.writer.get_or_try_init(|| {
-            LogWriter::new(&self.inner.work_dir, format!("{}_{}", first.id, first.ts))
-        })?;
-
-        writer.append_logs(logs)?;
+        self.inner
+            .writer
+            .get_or_try_init(|| Self::create_log_group(&self.inner.work_dir, first.id, first.ts))?
+            .append_logs(logs)?;
 
         Ok(())
     }
-}
 
-#[derive(Debug)]
-struct LogAppenderInner {
-    work_dir: PathBuf,
-    queue: ArrayQueue<Log>,
-    flush_len: usize,
-    file_size_threshold: u64,
+    fn create_log_group(path: impl AsRef<Path>, id: u64, ts: u64) -> Result<LogWriter> {
+        let mut binding = File::options();
+        let filename = format!("{id}_{ts}");
+        let options = binding.append(true).create(true).read(true);
+
+        Ok(LogWriter::new(
+            options.open(path.as_ref().join(format!("{filename}.limlog")))?,
+            options.open(path.as_ref().join(format!("{filename}.idx")))?,
+            options.open(path.as_ref().join(format!("{filename}.ts.idx")))?,
+        )?)
+    }
 }
 
 fn find_latest_log_group(log_dir: impl AsRef<Path>) -> Option<(u64, u64)> {
