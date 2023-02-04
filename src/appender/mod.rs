@@ -3,10 +3,9 @@ mod log_writer;
 
 use anyhow::{anyhow, ensure, Result};
 use crossbeam_queue::ArrayQueue;
-use once_cell::sync::OnceCell;
 use std::{
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 
 use crate::{formats::log::Log, log_groups};
@@ -39,7 +38,7 @@ impl Builder {
     }
 
     /// Set the log file size threshold.
-    /// 
+    ///
     /// A new log file will be created when the log file size exceeds the threshold.
     /// default is 500 MiB.
     pub fn file_size_threshold(mut self, file_size_threshold: u64) -> Builder {
@@ -48,7 +47,7 @@ impl Builder {
     }
 
     /// Set the flush percentage.
-    /// 
+    ///
     /// [LogAppender] will automatically flush
     /// when queue len exceeds the queue_size * flush_percentage.
     pub fn flush_percentage(mut self, flush_percent: f32) -> Builder {
@@ -67,11 +66,13 @@ impl Builder {
 
         let writer = find_latest_log_group(&self.work_dir)
             .and_then(|(id, ts)| {
-                Some(OnceCell::with_value(
-                    LogWriter::new(&self.work_dir, format!("{id}_{ts}")).ok()?,
-                ))
+                let writer = OnceLock::new();
+                writer
+                    .set(LogWriter::new(&self.work_dir, format!("{id}_{ts}")).ok()?)
+                    .ok()?;
+                Some(writer)
             })
-            .unwrap_or_else(|| OnceCell::new());
+            .unwrap_or_else(|| OnceLock::new());
 
         Ok(LogAppender {
             inner: Arc::new(LogAppenderInner {
@@ -97,7 +98,7 @@ struct LogAppenderInner {
     flush_len: usize,
     file_size_threshold: u64,
 
-    writer: OnceCell<LogWriter>,
+    writer: OnceLock<LogWriter>,
 }
 
 impl LogAppender {

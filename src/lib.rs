@@ -1,4 +1,4 @@
-#![feature(generic_arg_infer)]
+#![feature(once_cell)]
 
 pub mod appender;
 

@@ -62,7 +62,7 @@ impl LogWriter {
         self.file_size_view.load(Ordering::Acquire)
     }
 
-    fn open_file(path: impl AsRef<Path>, file_name: &String) -> Result<(File, u64)> {
+    fn open_file(path: impl AsRef<Path>, file_name: &str) -> Result<(File, u64)> {
         let file = File::options()
             .append(true)
             .create(true)

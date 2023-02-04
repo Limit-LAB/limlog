@@ -7,7 +7,7 @@ use std::{fs::File, io::Write, mem::size_of, path::Path, thread};
 use crate::formats::log::IndexFileHeader;
 
 #[derive(Debug)]
-pub(crate) struct IndexWriter<T: Serialize + Send + Sync + 'static> {
+pub(crate) struct IndexWriter<T> {
     sender: Sender<Vec<T>>,
 }
 
@@ -48,7 +48,7 @@ impl<T: Serialize + Send + Sync + 'static> IndexWriter<T> {
     }
 }
 
-struct IndexWriterInner<T: Serialize + Send + Sync + 'static> {
+struct IndexWriterInner<T> {
     file: File,
     file_size: u64,
     receiver: Receiver<Vec<T>>,
@@ -82,7 +82,7 @@ impl<T: Serialize + Send + Sync + 'static> IndexWriterInner<T> {
 
             Ok(())
         } else {
-            let mut buf = Box::new([0u8; size_of::<IndexFileHeader>()]);
+            let mut buf = [0u8; size_of::<IndexFileHeader>()];
             self.file.read_at(0, buf.as_mut_slice())?;
 
             (IndexFileHeader::try_from(buf.as_slice())? == self.expected_header)
