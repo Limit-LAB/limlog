@@ -1,19 +1,23 @@
 use anyhow::{anyhow, ensure, Result};
 use kanal::{bounded, Receiver, Sender};
-use positioned_io::ReadAt;
-use serde::Serialize;
-use std::{fs::File, io::Write, mem::size_of, path::Path, thread};
+use std::{io::Write, mem::size_of, thread};
 
-use crate::formats::log::IndexFileHeader;
+use crate::{formats::log::IndexFileHeader, util::{BlockIODevice, LogItem}};
 
 #[derive(Debug)]
 pub(crate) struct IndexWriter<T> {
     sender: Sender<Vec<T>>,
 }
 
-impl<T: Serialize + Send + Sync + 'static> IndexWriter<T> {
-    pub(crate) fn new(path: impl AsRef<Path>, expected_header: IndexFileHeader) -> Result<Self> {
-        let (file, file_size) = Self::open_file(path)?;
+impl<T: LogItem> IndexWriter<T> {
+    pub(crate) fn new(file: impl BlockIODevice, expected_header: IndexFileHeader) -> Result<Self> {
+        let file_size = file.len()?;
+        ensure!(
+            file_size == 0
+                || (file_size - size_of::<IndexFileHeader>() as u64) % size_of::<T>() as u64 == 0,
+            "Invalid log index file"
+        );
+
         let (sender, receiver) = bounded(8);
         let inner = IndexWriterInner {
             file,
@@ -29,33 +33,16 @@ impl<T: Serialize + Send + Sync + 'static> IndexWriter<T> {
     pub(crate) fn append_log_indexes(&self, indexes: Vec<T>) -> Result<()> {
         Ok(self.sender.send(indexes)?)
     }
-
-    #[inline]
-    fn open_file(path: impl AsRef<Path>) -> Result<(File, u64)> {
-        let file = File::options()
-            .append(true)
-            .create(true)
-            .open(path.as_ref())?;
-
-        let file_size = file.metadata()?.len();
-        ensure!(
-            file_size == 0
-                || (file_size - size_of::<IndexFileHeader>() as u64) % size_of::<T>() as u64 == 0,
-            "Invalid log index file"
-        );
-
-        Ok((file, file_size))
-    }
 }
 
-struct IndexWriterInner<T> {
-    file: File,
+struct IndexWriterInner<F, T> {
+    file: F,
     file_size: u64,
     receiver: Receiver<Vec<T>>,
     expected_header: IndexFileHeader,
 }
 
-impl<T: Serialize + Send + Sync + 'static> IndexWriterInner<T> {
+impl<F: BlockIODevice, T: LogItem> IndexWriterInner<F, T> {
     fn exec(mut self) -> Result<()> {
         self.check_or_init_header()?;
 

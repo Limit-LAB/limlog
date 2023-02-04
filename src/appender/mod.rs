@@ -1,14 +1,15 @@
 mod index_writer;
 mod log_writer;
 
-use anyhow::{anyhow, ensure, Result};
+use anyhow::{anyhow, ensure, Ok, Result};
 use crossbeam_queue::ArrayQueue;
 use std::{
+    fs::File,
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
 };
 
-use crate::{formats::log::Log, log_groups};
+use crate::{formats::log::Log, util::log_groups};
 
 use self::log_writer::LogWriter;
 
@@ -68,7 +69,7 @@ impl Builder {
             .and_then(|(id, ts)| {
                 let writer = OnceLock::new();
                 writer
-                    .set(LogWriter::new(&self.work_dir, format!("{id}_{ts}")).ok()?)
+                    .set(LogAppender::create_log_group(&self.work_dir, id, ts).ok()?)
                     .ok()?;
                 Some(writer)
             })
@@ -141,19 +142,33 @@ impl LogAppender {
         let Some(first) = logs.first() else { return Ok(()); };
         if let Some(writer) = self.inner.writer.get() {
             if writer.file_size() >= self.inner.file_size_threshold {
-                _ = self.inner.writer.set(LogWriter::new(
+                _ = self.inner.writer.set(Self::create_log_group(
                     &self.inner.work_dir,
-                    format!("{}_{}", first.id, first.ts),
+                    first.id,
+                    first.ts,
                 )?);
             }
         }
 
-        let writer = self.inner.writer.get_or_try_init(|| {
-            LogWriter::new(&self.inner.work_dir, format!("{}_{}", first.id, first.ts))
-        })?;
+        let writer = self
+            .inner
+            .writer
+            .get_or_try_init(|| Self::create_log_group(&self.inner.work_dir, first.id, first.ts))?;
         writer.append_logs(logs)?;
 
         Ok(())
+    }
+
+    fn create_log_group(path: impl AsRef<Path>, id: u64, ts: u64) -> Result<LogWriter> {
+        let mut binding = File::options();
+        let filename = format!("{id}_{ts}");
+        let options = binding.append(true).create(true).read(true);
+
+        Ok(LogWriter::new(
+            options.open(path.as_ref().join(format!("{filename}.limlog")))?,
+            options.open(path.as_ref().join(format!("{filename}.idx")))?,
+            options.open(path.as_ref().join(format!("{filename}.ts.idx")))?,
+        )?)
     }
 }
 

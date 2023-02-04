@@ -1,11 +1,8 @@
 use anyhow::{ensure, Result};
 use kanal::{bounded, Receiver, Sender};
-use positioned_io::{ReadAt, WriteAt};
 use std::{
-    fs::File,
     io::Write,
     mem::size_of,
-    path::Path,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -16,32 +13,30 @@ use std::{
 use crate::{
     appender::index_writer::IndexWriter,
     formats::log::{Index, Log, LogFileHeader, Timestamp, INDEX_HEADER, TS_INDEX_HEADER},
+    util::BlockIODevice,
 };
-
-type Counter = Arc<AtomicU64>;
 
 #[derive(Debug)]
 pub(crate) struct LogWriter {
     sender: Sender<Vec<Log>>,
-    file_size_view: Counter,
+    file_size_view: Arc<AtomicU64>,
 }
 
 impl LogWriter {
-    pub(crate) fn new(path: impl AsRef<Path>, file_name: String) -> Result<LogWriter> {
-        let (file, file_size) = Self::open_file(&path, &file_name)?;
+    pub(crate) fn new<F: BlockIODevice>(file: F, idx_file: F, ts_idx_file: F) -> Result<LogWriter> {
+        let file_size = file.len()?;
+        ensure!(
+            file_size == 0 || file_size > size_of::<LogFileHeader>() as u64,
+            "Invalid log file: broken header"
+        );
+
         let (sender, receiver) = bounded(8);
         let inner = LogWriterInner {
             file,
             file_size: Arc::new(AtomicU64::new(file_size)),
             receiver,
-            idx_writer: IndexWriter::new(
-                path.as_ref().join(format!("{file_name}.idx")),
-                INDEX_HEADER,
-            )?,
-            ts_idx_writer: IndexWriter::new(
-                path.as_ref().join(format!("{file_name}.ts.idx")),
-                TS_INDEX_HEADER,
-            )?,
+            idx_writer: IndexWriter::new(idx_file, INDEX_HEADER)?,
+            ts_idx_writer: IndexWriter::new(ts_idx_file, TS_INDEX_HEADER)?,
         };
 
         let file_size_view = inner.file_size.clone();
@@ -61,33 +56,17 @@ impl LogWriter {
     pub(crate) fn file_size(&self) -> u64 {
         self.file_size_view.load(Ordering::Acquire)
     }
-
-    fn open_file(path: impl AsRef<Path>, file_name: &str) -> Result<(File, u64)> {
-        let file = File::options()
-            .append(true)
-            .create(true)
-            .read(true)
-            .open(path.as_ref().join(format!("{file_name}.limlog")))?;
-
-        let file_size = file.metadata()?.len();
-        ensure!(
-            file_size == 0 || file_size > size_of::<LogFileHeader>() as u64,
-            "Invalid log file: broken header"
-        );
-
-        Ok((file, file_size))
-    }
 }
 
-struct LogWriterInner {
-    file: File,
-    file_size: Counter,
+struct LogWriterInner<F> {
+    file: F,
+    file_size: Arc<AtomicU64>,
     receiver: Receiver<Vec<Log>>,
     idx_writer: IndexWriter<Index>,
     ts_idx_writer: IndexWriter<Timestamp>,
 }
 
-impl LogWriterInner {
+impl<F: BlockIODevice> LogWriterInner<F> {
     fn exec(mut self) -> Result<()> {
         let mut header = self.get_or_init_header()?;
 
