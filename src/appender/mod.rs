@@ -150,11 +150,10 @@ impl LogAppender {
             }
         }
 
-        let writer = self
-            .inner
+        self.inner
             .writer
-            .get_or_try_init(|| Self::create_log_group(&self.inner.work_dir, first.id, first.ts))?;
-        writer.append_logs(logs)?;
+            .get_or_try_init(|| Self::create_log_group(&self.inner.work_dir, first.id, first.ts))?
+            .append_logs(logs)?;
 
         Ok(())
     }

@@ -1,8 +1,11 @@
 use anyhow::{anyhow, ensure, Result};
 use kanal::{bounded, Receiver, Sender};
-use std::{io::Write, mem::size_of, thread};
+use std::{mem::size_of, slice::from_raw_parts, thread};
 
-use crate::{formats::log::IndexFileHeader, util::{BlockIODevice, LogItem}};
+use crate::{
+    formats::log::IndexFileHeader,
+    util::{BlockIODevice, LogItem},
+};
 
 #[derive(Debug)]
 pub(crate) struct IndexWriter<T> {
@@ -47,12 +50,19 @@ impl<F: BlockIODevice, T: LogItem> IndexWriterInner<F, T> {
         self.check_or_init_header()?;
 
         while let Ok(indexes) = self.receiver.recv() {
-            let mut buf = Vec::with_capacity(256);
+            // let mut buf = Vec::with_capacity(256);
 
-            for index in indexes {
-                let bytes = bincode::serialize(&index).unwrap();
-                buf.write_all(&bytes).unwrap();
-            }
+            // for index in indexes {
+            //     let bytes = bincode::serialize(&index).unwrap();
+            //     buf.write_all(&bytes).unwrap();
+            // }
+
+            let buf = unsafe {
+                from_raw_parts(
+                    indexes.as_ptr() as *const u8,
+                    indexes.len() * size_of::<T>(),
+                )
+            };
 
             self.file.write_all(&buf)?;
             self.file.sync_data()?;
