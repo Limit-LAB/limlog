@@ -1,54 +1,47 @@
-use anyhow::{anyhow, ensure, Result};
-use kanal::{bounded, Receiver, Sender};
-use std::{mem::size_of, slice::from_raw_parts, thread};
+use anyhow::Result;
+use kanal::{unbounded, Receiver, Sender};
+use std::{marker::PhantomData, mem::size_of, slice::from_raw_parts, thread};
 
 use crate::{
+    checker::IndexChecker,
     formats::log::IndexFileHeader,
     util::{BlockIODevice, LogItem},
 };
 
 #[derive(Debug)]
-pub(crate) struct IndexWriter<T> {
-    sender: Sender<Vec<T>>,
+pub(crate) struct IndexWriter<F, I> {
+    sender: Sender<Vec<I>>,
+    phantom: PhantomData<F>,
 }
 
-impl<T: LogItem> IndexWriter<T> {
-    pub(crate) fn new(file: impl BlockIODevice, expected_header: IndexFileHeader) -> Result<Self> {
-        let file_size = file.len()?;
-        ensure!(
-            file_size == 0
-                || (file_size - size_of::<IndexFileHeader>() as u64) % size_of::<T>() as u64 == 0,
-            "Invalid log index file"
-        );
+impl<F: BlockIODevice, I: LogItem> IndexWriter<F, I> {
+    pub(crate) fn new(mut file: F, expected_header: IndexFileHeader) -> Result<Self> {
+        let mut file_size = file.len()?;
+        IndexChecker::check::<I>(&mut file, &mut file_size, expected_header).or_init()?;
 
-        let (sender, receiver) = bounded(8);
-        let inner = IndexWriterInner {
-            file,
-            file_size,
-            receiver,
-            expected_header,
-        };
+        let (sender, receiver) = unbounded();
+        let inner = IndexWriterInner { file, receiver };
         thread::spawn(move || inner.exec());
 
-        Ok(Self { sender })
+        Ok(Self {
+            sender,
+            phantom: PhantomData,
+        })
     }
 
-    pub(crate) fn append_log_indexes(&self, indexes: Vec<T>) -> Result<()> {
+    pub(crate) fn append_log_indexes(&self, indexes: Vec<I>) -> Result<()> {
+        // submit a task to worker
         Ok(self.sender.send(indexes)?)
     }
 }
 
 struct IndexWriterInner<F, T> {
     file: F,
-    file_size: u64,
     receiver: Receiver<Vec<T>>,
-    expected_header: IndexFileHeader,
 }
 
 impl<F: BlockIODevice, T: LogItem> IndexWriterInner<F, T> {
     fn exec(mut self) -> Result<()> {
-        self.check_or_init_header()?;
-
         while let Ok(indexes) = self.receiver.recv() {
             // let mut buf = Vec::with_capacity(256);
 
@@ -69,22 +62,5 @@ impl<F: BlockIODevice, T: LogItem> IndexWriterInner<F, T> {
         }
 
         Ok(())
-    }
-
-    fn check_or_init_header(&mut self) -> Result<()> {
-        if self.file_size == 0 {
-            self.file
-                .write_all(&bincode::serialize(&self.expected_header)?)?;
-            self.file.sync_data()?;
-
-            Ok(())
-        } else {
-            let mut buf = [0u8; size_of::<IndexFileHeader>()];
-            self.file.read_at(0, buf.as_mut_slice())?;
-
-            (IndexFileHeader::try_from(buf.as_slice())? == self.expected_header)
-                .then_some(())
-                .ok_or(anyhow!("Invalid file header"))
-        }
     }
 }

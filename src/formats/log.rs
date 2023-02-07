@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
 
 // log file format:
@@ -42,6 +40,16 @@ macro_rules! impl_from_bytes {
     };
 }
 
+macro_rules! impl_key_ord {
+    ($class:ty) => {
+        impl PartialOrd for $class {
+            fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+                self.0.partial_cmp(&other.0)
+            }
+        }
+    };
+}
+
 #[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
 pub(crate) struct LogFileHeader {
     pub magic_number: u64,
@@ -62,29 +70,24 @@ pub struct Log {
 impl_from_bytes!(Log);
 impl_from_bytes!(LogFileHeader);
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub(crate) struct Index(pub u64, pub u64);
-pub(crate) type Indexes = BTreeMap<
-    u64, // ID
-    u64, // OFFSET
->;
-
 pub(crate) const INDEX_HEADER: IndexFileHeader = IndexFileHeader { magic_number: 1 };
 pub(crate) const TS_INDEX_HEADER: IndexFileHeader = IndexFileHeader { magic_number: 2 };
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
 pub(crate) struct IndexFileHeader {
     pub magic_number: u64,
+    // INDEXES
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
+pub(crate) struct Index(pub u64, pub u64);
+
+#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
 pub(crate) struct Timestamp(pub u64, pub u64);
-pub(crate) type Timestamps = BTreeMap<
-    u64, // TS
-    u64, // OFFSET
->;
 
 impl_from_bytes!(Index);
 impl_from_bytes!(Timestamp);
 impl_from_bytes!(IndexFileHeader);
-// impl_from_bytes!(TimestampFileHeader);
+
+impl_key_ord!(Index);
+impl_key_ord!(Timestamp);

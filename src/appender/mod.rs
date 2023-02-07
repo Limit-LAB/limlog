@@ -1,10 +1,10 @@
 mod index_writer;
-mod log_writer;
+pub(crate) mod log_writer;
 
-use anyhow::{anyhow, ensure, Ok, Result};
+use anyhow::{anyhow, ensure, Result};
 use crossbeam_queue::ArrayQueue;
 use std::{
-    fs::File,
+    fs::{self, File},
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
 };
@@ -65,12 +65,16 @@ impl Builder {
             "File max size must be greater than 128 bytes"
         );
 
+        // open the latest log group if present
         let writer = find_latest_log_group(&self.work_dir)
             .and_then(|(id, ts)| {
                 let writer = OnceLock::new();
-                writer
-                    .set(LogAppender::create_log_group(&self.work_dir, id, ts).ok()?)
-                    .ok()?;
+                let Ok(log_writer) = LogAppender::open_log_group(&self.work_dir, id, ts) else {
+                    // archive broken log group
+                    LogAppender::recover_log_group(&self.work_dir, id, ts).ok()?;
+                    return None;
+                };
+                writer.set(log_writer).ok()?;
                 Some(writer)
             })
             .unwrap_or_else(|| OnceLock::new());
@@ -100,6 +104,12 @@ struct LogAppenderInner {
     file_size_threshold: u64,
 
     writer: OnceLock<LogWriter>,
+}
+
+macro_rules! log_file_path {
+    ($dir:expr, $file_name:expr, $ext:literal) => {
+        $dir.join(format!(concat!("{}.", $ext), $file_name))
+    };
 }
 
 impl LogAppender {
@@ -142,31 +152,64 @@ impl LogAppender {
         let Some(first) = logs.first() else { return Ok(()); };
         if let Some(writer) = self.inner.writer.get() {
             if writer.file_size() >= self.inner.file_size_threshold {
-                _ = self.inner.writer.set(Self::create_log_group(
-                    &self.inner.work_dir,
-                    first.id,
-                    first.ts,
-                )?);
+                // 神父换碟
+                _ = self
+                    .inner
+                    .writer
+                    .set(self.create_log_group(first.id, first.ts)?);
             }
         }
 
         self.inner
             .writer
-            .get_or_try_init(|| Self::create_log_group(&self.inner.work_dir, first.id, first.ts))?
+            .get_or_try_init(|| self.create_log_group(first.id, first.ts))?
             .append_logs(logs)?;
 
         Ok(())
     }
 
-    fn create_log_group(path: impl AsRef<Path>, id: u64, ts: u64) -> Result<LogWriter> {
+    // open a exist log group
+    fn open_log_group(path: impl AsRef<Path>, id: u64, ts: u64) -> Result<LogWriter> {
         let mut binding = File::options();
         let filename = format!("{id}_{ts}");
-        let options = binding.append(true).create(true).read(true);
+        let options = binding.append(true).read(true);
 
         Ok(LogWriter::new(
-            options.open(path.as_ref().join(format!("{filename}.limlog")))?,
-            options.open(path.as_ref().join(format!("{filename}.idx")))?,
-            options.open(path.as_ref().join(format!("{filename}.ts.idx")))?,
+            options.open(log_file_path!(path.as_ref(), filename, "limlog"))?,
+            options.open(log_file_path!(path.as_ref(), filename, "idx"))?,
+            options.open(log_file_path!(path.as_ref(), filename, "ts.idx"))?,
+        )?)
+    }
+
+    fn recover_log_group(path: impl AsRef<Path>, id: u64, ts: u64) -> Result<()> {
+        let filename = format!("{id}_{ts}");
+
+        fs::rename(
+            log_file_path!(path.as_ref(), filename, "limlog"),
+            log_file_path!(path.as_ref(), filename, "limlog.old"),
+        )?;
+        fs::rename(
+            log_file_path!(path.as_ref(), filename, "idx"),
+            log_file_path!(path.as_ref(), filename, "idx.old"),
+        )?;
+        fs::rename(
+            log_file_path!(path.as_ref(), filename, "ts.idx"),
+            log_file_path!(path.as_ref(), filename, "ts.idx.old"),
+        )?;
+
+        Ok(())
+    }
+
+    // create a brand new log group
+    fn create_log_group(&self, id: u64, ts: u64) -> Result<LogWriter> {
+        let mut binding = File::options();
+        let filename = format!("{id}_{ts}");
+        let options = binding.append(true).create_new(true).read(true);
+
+        Ok(LogWriter::new(
+            options.open(log_file_path!(self.inner.work_dir, filename, "limlog"))?,
+            options.open(log_file_path!(self.inner.work_dir, filename, "idx"))?,
+            options.open(log_file_path!(self.inner.work_dir, filename, "ts.idx"))?,
         )?)
     }
 }
