@@ -1,27 +1,17 @@
 use std::{
     fs::{self, File},
-    io::{Result, Write},
+    io::{Read, Result, Seek, Write},
     path::Path,
 };
 
 use positioned_io::{ReadAt, WriteAt};
 use serde::{Deserialize, Serialize};
 
-pub trait LogItem = Serialize + for<'a> Deserialize<'a> + Send + Sync + 'static;
+pub trait LogItem = Clone + Serialize + for<'a> Deserialize<'a> + Default + Send + Sync + 'static;
 
-pub trait BlockIODevice: Write + ReadAt + WriteAt + Sync + Send + 'static {
+pub trait BlockIODevice: Read + Write + ReadAt + WriteAt + Seek + Sync + Send + 'static {
     fn len(&self) -> Result<u64>;
     fn sync_data(&self) -> Result<()>;
-}
-
-impl BlockIODevice for Vec<u8> {
-    fn len(&self) -> Result<u64> {
-        Ok(self.len() as u64)
-    }
-
-    fn sync_data(&self) -> Result<()> {
-        Ok(())
-    }
 }
 
 impl BlockIODevice for File {
@@ -34,13 +24,13 @@ impl BlockIODevice for File {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct LogEntry {
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
+pub struct LogGroup {
     pub id: u64,
     pub ts: u64,
 }
 
-pub fn log_groups(log_dir: impl AsRef<Path>) -> Vec<LogEntry> {
+pub fn log_groups(log_dir: impl AsRef<Path>) -> Vec<LogGroup> {
     let Ok(dirs) = fs::read_dir(log_dir.as_ref()) else {
         return Vec::new();
     };
@@ -54,7 +44,7 @@ pub fn log_groups(log_dir: impl AsRef<Path>) -> Vec<LogEntry> {
 
             let name = path.file_name()?.to_str()?;
             let ret = name.split_once('_').and_then(|(id, ts)| {
-                Some(LogEntry {
+                Some(LogGroup {
                     id: id.parse::<u64>().ok()?,
                     ts: ts.parse::<u64>().ok()?,
                 })
