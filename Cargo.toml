@@ -15,3 +15,10 @@ thiserror = "1.0"
 crossbeam-queue = "0.3"
 kanal = { version = "0.1.0-pre8", default-features = false }
 smallvec = {version = "1.10",features = ["union", "const_new", "const_generics", "specialization"]}
+
+[dev-dependencies]
+criterion = "0.4.0"
+
+[[bench]]
+name = "appender_benchmark"
+harness = false
