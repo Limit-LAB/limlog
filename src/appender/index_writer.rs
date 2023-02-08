@@ -15,11 +15,13 @@ pub(crate) struct IndexWriter<T> {
 impl<T: LogItem> IndexWriter<T> {
     pub(crate) fn new(file: impl BlockIODevice, expected_header: IndexFileHeader) -> Result<Self> {
         let file_size = file.len()?;
-        ensure!(
-            file_size == 0
-                || (file_size - size_of::<IndexFileHeader>() as u64) % size_of::<T>() as u64 == 0,
-            "Invalid log index file"
-        );
+        let header_len = size_of::<IndexFileHeader>() as u64;
+        if file_size > 0 {
+            ensure!(
+                file_size > header_len && (file_size - header_len) % size_of::<T>() as u64 == 0,
+                "Invalid log index file"
+            );
+        }
 
         let (sender, receiver) = bounded(8);
         let inner = IndexWriterInner {

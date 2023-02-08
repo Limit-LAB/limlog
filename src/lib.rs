@@ -4,12 +4,13 @@
 
 pub mod appender;
 pub mod selector;
-pub(crate) mod util;
 
 pub mod formats;
 
 pub use appender::LogAppender;
 pub use formats::log::Log;
+
+mod util;
 
 #[cfg(test)]
 mod tests;

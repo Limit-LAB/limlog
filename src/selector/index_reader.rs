@@ -50,7 +50,7 @@ impl<F: BlockIODevice> IndexReader<F> {
         [u8; size_of::<Q>()]: Sized,
     {
         let mut left = 0;
-        let mut right = self.len - 1;
+        let mut right = self.len / size_of::<Q>() as u64 - 1;
         let mut mid;
 
         while left < right {
@@ -75,9 +75,9 @@ impl<F: BlockIODevice> IndexReader<F> {
         Q: LogItem + PartialOrd,
         [u8; size_of::<Q>()]: Sized,
     {
-        assert!(
-            index >= self.len / size_of::<Q>() as u64,
-            "Index out of bounds"
+        debug_assert!(
+            index < self.len / size_of::<Q>() as u64,
+            "Index out of bounds: {index}"
         );
         index * size_of::<Q>() as u64 + self.start
     }

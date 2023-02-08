@@ -1,5 +1,5 @@
 mod index_writer;
-mod log_writer;
+pub(crate) mod log_writer;
 
 use anyhow::{anyhow, ensure, Ok, Result};
 use crossbeam_queue::ArrayQueue;

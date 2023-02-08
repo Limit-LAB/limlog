@@ -26,7 +26,7 @@ impl LogWriter {
     pub(crate) fn new<F: BlockIODevice>(file: F, idx_file: F, ts_idx_file: F) -> Result<LogWriter> {
         let file_size = file.len()?;
         ensure!(
-            file_size == 0 || file_size > size_of::<LogFileHeader>() as u64,
+            file_size == 0 || file_size >= size_of::<LogFileHeader>() as u64,
             "Invalid log file: broken header"
         );
 

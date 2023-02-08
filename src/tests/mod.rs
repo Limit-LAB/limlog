@@ -10,6 +10,16 @@ use crate::util::BlockIODevice;
 #[derive(Debug, Clone)]
 struct TestFile(Arc<RwLock<Cursor<Vec<u8>>>>);
 
+impl TestFile {
+    fn new(init: Vec<u8>) -> TestFile {
+        Self(Arc::new(RwLock::new(Cursor::new(init))))
+    }
+
+    fn get_buf(&self) -> Vec<u8> {
+        self.0.read().unwrap().get_ref().clone()
+    }
+}
+
 impl Seek for TestFile {
     fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
         self.0.write().unwrap().seek(pos)
@@ -58,4 +68,6 @@ impl BlockIODevice for TestFile {
     }
 }
 
-mod log_test;
+mod log_format_test;
+mod reader_test;
+mod writer_test;

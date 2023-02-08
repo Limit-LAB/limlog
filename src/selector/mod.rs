@@ -1,5 +1,5 @@
-mod index_reader;
-mod log_reader;
+pub(crate) mod index_reader;
+pub(crate) mod log_reader;
 
 use std::{
     collections::BTreeMap,
