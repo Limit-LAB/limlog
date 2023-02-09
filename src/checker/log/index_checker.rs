@@ -12,6 +12,7 @@ pub(crate) struct IndexChecker<'a, F> {
 }
 
 impl<'a, F: BlockIODevice> IndexChecker<'a, F> {
+    // create a checker
     pub fn check<I>(
         file: &'a mut F,
         file_size: &'a mut u64,
@@ -25,6 +26,7 @@ impl<'a, F: BlockIODevice> IndexChecker<'a, F> {
         }
     }
 
+    // check and get header only
     pub fn header(self) -> Result<()> {
         ensure!(*self.file_size > 0, "Empty log index file");
         ensure!(
@@ -43,6 +45,7 @@ impl<'a, F: BlockIODevice> IndexChecker<'a, F> {
             .ok_or(anyhow!("Invalid index file header"))
     }
 
+    // init header if file is empty
     pub fn or_init(self) -> Result<()> {
         if *self.file_size == 0 {
             let header = self.expected_header;

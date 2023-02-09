@@ -10,10 +10,12 @@ pub(crate) struct LogChecker<'a, F> {
 }
 
 impl<'a, F: BlockIODevice> LogChecker<'a, F> {
+    // create a checker
     pub fn check(file: &'a mut F, file_size: &'a mut u64) -> Self {
         Self { file, file_size }
     }
 
+    // check and get header only
     pub fn header(self) -> Result<LogFileHeader> {
         ensure!(*self.file_size > 0, "Empty log file");
         ensure!(
@@ -26,6 +28,7 @@ impl<'a, F: BlockIODevice> LogChecker<'a, F> {
         Ok(bincode::deserialize(&buf)?)
     }
 
+    // init header if file is empty
     pub fn or_init(self) -> Result<LogFileHeader> {
         if *self.file_size == 0 {
             let header = LogFileHeader::default();

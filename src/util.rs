@@ -30,6 +30,7 @@ pub struct LogGroup {
     pub ts: u64,
 }
 
+// scan the log groups in the given path
 pub fn log_groups(log_dir: impl AsRef<Path>) -> Vec<LogGroup> {
     let Ok(dirs) = fs::read_dir(log_dir.as_ref()) else {
         return Vec::new();

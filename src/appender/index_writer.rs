@@ -30,6 +30,7 @@ impl<F: BlockIODevice, I: LogItem> IndexWriter<F, I> {
     }
 
     pub(crate) fn append_log_indexes(&self, indexes: Vec<I>) -> Result<()> {
+        // submit a task to worker
         Ok(self.sender.send(indexes)?)
     }
 }

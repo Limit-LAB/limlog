@@ -50,8 +50,7 @@ impl LogWriter {
     }
 
     pub(crate) fn append_logs(&self, logs: Vec<Log>) -> Result<()> {
-        self.sender.send(logs)?;
-        Ok(())
+        Ok(self.sender.send(logs)?)
     }
 
     pub(crate) fn file_size(&self) -> u64 {
@@ -68,6 +67,7 @@ struct LogWriterInner<F> {
 }
 
 impl<F: BlockIODevice> LogWriterInner<F> {
+    // write logs to file and drive IndexWriter to write indexes
     fn exec(mut self, mut header: LogFileHeader) -> Result<()> {
         let mut buf = Vec::with_capacity(1024);
 

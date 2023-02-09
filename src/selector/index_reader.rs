@@ -37,6 +37,7 @@ where
         })
     }
 
+    // select by given index(eg. Timestamp, Id) on the file
     pub(crate) fn select_range(&self, start: &I, end: &I) -> Result<Option<(I, u64)>> {
         // TODO: cache
         let (left, _) = self.binary_search(start, PartialOrd::lt)?;
@@ -66,6 +67,7 @@ where
         Ok((left, right))
     }
 
+    // convert "index" of index item to file offset 
     #[inline]
     fn index_to_offset(&self, index: u64) -> u64 {
         debug_assert!(
@@ -75,6 +77,7 @@ where
         index * size_of::<I>() as u64 + self.start
     }
 
+    // get index item by given "index"
     #[inline]
     fn index_item(&self, index: u64) -> Result<I> {
         let mut buf = [0u8; size_of::<I>()];

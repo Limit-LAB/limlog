@@ -34,6 +34,7 @@ pub struct LogSelector {
 }
 
 impl LogSelector {
+    /// Create a new [LogSelector].
     pub fn new(path: impl AsRef<Path>) -> Result<LogSelector> {
         let groups = log_groups(path.as_ref());
         ensure!(!groups.is_empty(), "Empty log directory");
@@ -50,7 +51,9 @@ impl LogSelector {
         Ok(Self { groups, sender })
     }
 
+    /// Select range by log ID or log timestamp
     pub fn select_range(&self, range: SelectRange) -> Result<SelectResult> {
+        // find log group which is in the range
         let range_groups = self.groups.windows(2);
         let range_groups = match range {
             SelectRange::Timestamp(start, end) => range_groups
@@ -74,6 +77,7 @@ impl LogSelector {
             return Ok(receiver);
         }
 
+        // submit a task to worker thread
         self.sender.send((range_groups, range, sender))?;
 
         Ok(receiver)
@@ -95,10 +99,19 @@ struct ReaderSet {
 }
 
 impl LogSelectorInner {
+    // Runs on selector worker thread
     fn exec(mut self) -> Result<()> {
-        while let Ok((range_groups, range, sender)) = self.receiver.recv() {
+        while let Ok((
+            range_groups, // groups in range
+            range,        // select range
+            sender,       // sender of result channel returned before
+        )) = self.receiver.recv()
+        {
             let mut res = Vec::with_capacity(128);
+
+            // select in each group
             for group in range_groups {
+                // Create new reader set if not exist
                 let set = match self.readers.get_mut(&group) {
                     Some(set) => set,
                     None => {
@@ -127,6 +140,7 @@ impl LogSelectorInner {
         Ok(())
     }
 
+    // Create new reader set if not exist
     fn create_reader_set(&self, group: LogGroup) -> Result<ReaderSet> {
         let file_name = format!("{}_{}", group.id, group.ts);
 

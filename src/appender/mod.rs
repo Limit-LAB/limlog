@@ -65,10 +65,12 @@ impl Builder {
             "File max size must be greater than 128 bytes"
         );
 
+        // open the latest log group if present
         let writer = find_latest_log_group(&self.work_dir)
             .and_then(|(id, ts)| {
                 let writer = OnceLock::new();
                 let Ok(log_writer) = LogAppender::open_log_group(&self.work_dir, id, ts) else {
+                    // archive broken log group
                     LogAppender::recover_log_group(&self.work_dir, id, ts).ok()?;
                     return None;
                 };
@@ -150,6 +152,7 @@ impl LogAppender {
         let Some(first) = logs.first() else { return Ok(()); };
         if let Some(writer) = self.inner.writer.get() {
             if writer.file_size() >= self.inner.file_size_threshold {
+                // 神父换碟
                 _ = self
                     .inner
                     .writer
@@ -165,6 +168,7 @@ impl LogAppender {
         Ok(())
     }
 
+    // open a exist log group
     fn open_log_group(path: impl AsRef<Path>, id: u64, ts: u64) -> Result<LogWriter> {
         let mut binding = File::options();
         let filename = format!("{id}_{ts}");
@@ -196,6 +200,7 @@ impl LogAppender {
         Ok(())
     }
 
+    // create a brand new log group
     fn create_log_group(&self, id: u64, ts: u64) -> Result<LogWriter> {
         let mut binding = File::options();
         let filename = format!("{id}_{ts}");
