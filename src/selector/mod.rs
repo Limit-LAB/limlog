@@ -90,8 +90,8 @@ struct LogSelectorInner {
 #[derive(Debug)]
 struct ReaderSet {
     log: LogReader<File>,
-    idx: IndexReader<File>,
-    ts_idx: IndexReader<File>,
+    idx: IndexReader<File, Index>,
+    ts_idx: IndexReader<File, Timestamp>,
 }
 
 impl LogSelectorInner {
@@ -134,11 +134,11 @@ impl LogSelectorInner {
             log: LogReader::new(File::open(
                 self.work_dir.join(format!("{file_name}.limlog")),
             )?)?,
-            idx: IndexReader::new::<Index>(
+            idx: IndexReader::new(
                 File::open(self.work_dir.join(format!("{file_name}.idx")))?,
                 INDEX_HEADER,
             )?,
-            ts_idx: IndexReader::new::<Timestamp>(
+            ts_idx: IndexReader::new(
                 File::open(self.work_dir.join(format!("{file_name}.ts.idx")))?,
                 TS_INDEX_HEADER,
             )?,

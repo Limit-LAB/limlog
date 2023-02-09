@@ -10,6 +10,7 @@ pub mod formats;
 pub use appender::LogAppender;
 pub use formats::log::Log;
 
+mod checker;
 mod util;
 
 #[cfg(test)]

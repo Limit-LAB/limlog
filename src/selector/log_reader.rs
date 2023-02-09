@@ -1,8 +1,8 @@
-use std::{io::SeekFrom, mem::size_of};
+use std::io::SeekFrom;
 
-use anyhow::{ensure, Result};
+use anyhow::Result;
 
-use crate::{formats::log::LogFileHeader, util::BlockIODevice, Log};
+use crate::{checker::LogChecker, util::BlockIODevice, Log};
 
 #[derive(Debug)]
 pub(crate) struct LogReader<F> {
@@ -10,12 +10,9 @@ pub(crate) struct LogReader<F> {
 }
 
 impl<F: BlockIODevice> LogReader<F> {
-    pub(crate) fn new(file: F) -> Result<LogReader<F>> {
-        let file_size = file.len()?;
-        ensure!(
-            file_size == 0 || file_size > size_of::<LogFileHeader>() as u64,
-            "Invalid log file: broken header"
-        );
+    pub(crate) fn new(mut file: F) -> Result<LogReader<F>> {
+        let mut file_size = file.len()?;
+        LogChecker::check(&mut file, &mut file_size).header()?;
 
         Ok(Self { file })
     }

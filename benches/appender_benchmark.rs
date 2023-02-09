@@ -4,7 +4,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use limlog::{Log, LogAppender};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-    fs::create_dir("bench_dir").unwrap();
+    _ = fs::create_dir("bench_dir");
 
     let appender = LogAppender::builder("bench_dir").build().unwrap();
     let mut count = 0;
@@ -12,7 +12,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("appender", |b| {
         b.iter(|| {
             let mut batch = Vec::with_capacity(1000);
-            for _ in 0..1000 {
+            for _ in 0..100 {
                 batch.push(Log {
                     ts: count,
                     id: count,
@@ -27,8 +27,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     });
 
     thread::sleep(Duration::from_millis(5000));
-
-    fs::remove_dir_all("bench_dir").unwrap();
 }
 
 criterion_group!(benches, criterion_benchmark);

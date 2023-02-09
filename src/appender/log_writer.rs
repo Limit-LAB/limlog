@@ -1,8 +1,7 @@
-use anyhow::{ensure, Result};
-use kanal::{bounded, Receiver, Sender};
+use anyhow::Result;
+use kanal::{unbounded, Receiver, Sender};
 use std::{
     io::Write,
-    mem::size_of,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -12,6 +11,7 @@ use std::{
 
 use crate::{
     appender::index_writer::IndexWriter,
+    checker::LogChecker,
     formats::log::{Index, Log, LogFileHeader, Timestamp, INDEX_HEADER, TS_INDEX_HEADER},
     util::BlockIODevice,
 };
@@ -23,14 +23,15 @@ pub(crate) struct LogWriter {
 }
 
 impl LogWriter {
-    pub(crate) fn new<F: BlockIODevice>(file: F, idx_file: F, ts_idx_file: F) -> Result<LogWriter> {
-        let file_size = file.len()?;
-        ensure!(
-            file_size == 0 || file_size >= size_of::<LogFileHeader>() as u64,
-            "Invalid log file: broken header"
-        );
+    pub(crate) fn new<F: BlockIODevice>(
+        mut file: F,
+        idx_file: F,
+        ts_idx_file: F,
+    ) -> Result<LogWriter> {
+        let mut file_size = file.len()?;
+        let header = LogChecker::check(&mut file, &mut file_size).or_init()?;
 
-        let (sender, receiver) = bounded(8);
+        let (sender, receiver) = unbounded();
         let inner = LogWriterInner {
             file,
             file_size: Arc::new(AtomicU64::new(file_size)),
@@ -40,7 +41,7 @@ impl LogWriter {
         };
 
         let file_size_view = inner.file_size.clone();
-        thread::spawn(move || inner.exec());
+        thread::spawn(move || inner.exec(header));
 
         Ok(Self {
             sender,
@@ -62,16 +63,17 @@ struct LogWriterInner<F> {
     file: F,
     file_size: Arc<AtomicU64>,
     receiver: Receiver<Vec<Log>>,
-    idx_writer: IndexWriter<Index>,
-    ts_idx_writer: IndexWriter<Timestamp>,
+    idx_writer: IndexWriter<F, Index>,
+    ts_idx_writer: IndexWriter<F, Timestamp>,
 }
 
 impl<F: BlockIODevice> LogWriterInner<F> {
-    fn exec(mut self) -> Result<()> {
-        let mut header = self.get_or_init_header()?;
+    fn exec(mut self, mut header: LogFileHeader) -> Result<()> {
+        let mut buf = Vec::with_capacity(1024);
 
         while let Ok(logs) = self.receiver.recv() {
-            let mut buf = Vec::with_capacity(1024);
+            buf.clear();
+
             let mut idx = Vec::with_capacity(logs.len());
             let mut ts_idx = Vec::with_capacity(logs.len());
 
@@ -97,24 +99,5 @@ impl<F: BlockIODevice> LogWriterInner<F> {
         }
 
         Ok(())
-    }
-
-    fn get_or_init_header(&mut self) -> Result<LogFileHeader> {
-        let mut header = LogFileHeader::default();
-
-        if self.file_size.load(Ordering::Acquire) == 0 {
-            self.file.write_all(&bincode::serialize(&header)?)?;
-            self.file.sync_data()?;
-
-            self.file_size
-                .store(size_of::<LogFileHeader>() as _, Ordering::Release);
-        } else {
-            let mut buf = Box::new([0u8; size_of::<LogFileHeader>()]);
-            self.file.read_at(0, buf.as_mut_slice())?;
-
-            header = LogFileHeader::try_from(buf.as_slice())?;
-        }
-
-        Ok(header)
     }
 }

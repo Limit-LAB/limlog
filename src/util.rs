@@ -42,7 +42,7 @@ pub fn log_groups(log_dir: impl AsRef<Path>) -> Vec<LogGroup> {
 
             (path.is_file() && path.extension().unwrap_or_default().eq("limlog")).then_some(())?;
 
-            let name = path.file_name()?.to_str()?;
+            let name = path.file_stem()?.to_str()?;
             let ret = name.split_once('_').and_then(|(id, ts)| {
                 Some(LogGroup {
                     id: id.parse::<u64>().ok()?,

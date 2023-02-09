@@ -57,7 +57,7 @@ fn test_reader() {
             .collect::<Vec<_>>(),
     );
 
-    let idx_reader = IndexReader::new::<Index>(idx_file, INDEX_HEADER).unwrap();
+    let idx_reader = IndexReader::new(idx_file, INDEX_HEADER).unwrap();
 
     let res = idx_reader
         .select_range(&Index(0, 0), &Index(2, 0))
@@ -82,7 +82,7 @@ fn test_reader() {
             .collect::<Vec<_>>(),
     );
 
-    let idx_reader = IndexReader::new::<Timestamp>(ts_idx_file, TS_INDEX_HEADER).unwrap();
+    let idx_reader = IndexReader::new(ts_idx_file, TS_INDEX_HEADER).unwrap();
 
     let res = idx_reader
         .select_range(&Timestamp(0, 0), &Timestamp(2, 0))
