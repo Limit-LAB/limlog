@@ -1,13 +1,15 @@
-use anyhow::Result;
-use kanal::{unbounded, Receiver, Sender};
 use std::{
-    io::Write,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
     },
     thread,
 };
+
+use anyhow::Result;
+use bytes::{BufMut, BytesMut};
+use kanal::{unbounded, Receiver, Sender};
+use smallvec::SmallVec;
 
 use crate::{
     appender::index_writer::IndexWriter,
@@ -67,34 +69,42 @@ struct LogWriterInner<F> {
 }
 
 impl<F: BlockIODevice> LogWriterInner<F> {
+    // LARGE FUNCTION
     // write logs to file and drive IndexWriter to write indexes
     fn exec(mut self, mut header: LogFileHeader) -> Result<()> {
-        let mut buf = Vec::with_capacity(1024);
+        let mut buf = BytesMut::with_capacity(1024).writer();
 
         while let Ok(logs) = self.receiver.recv() {
-            buf.clear();
+            buf.get_mut().clear();
 
-            let mut idx = Vec::with_capacity(logs.len());
-            let mut ts_idx = Vec::with_capacity(logs.len());
+            let mut idx = SmallVec::with_capacity(logs.len());
+            let mut ts_idx = SmallVec::with_capacity(logs.len());
 
             for log in logs {
-                let size = self.file_size.load(Ordering::Acquire);
-                let bytes = bincode::serialize(&log)?;
+                let file_size = self.file_size.load(Ordering::Acquire);
 
-                idx.push(Index(log.id, size));
-                ts_idx.push(Timestamp(log.ts, size));
+                idx.push(Index(log.id, file_size));
+                ts_idx.push(Timestamp(log.ts, file_size));
 
-                buf.write_all(&bytes)?;
-                header.entry_count += 1;
+                let old_len = buf.get_ref().len();
+                bincode::serialize_into(&mut buf, &log)?;
                 self.file_size
-                    .fetch_add(bytes.len() as u64, Ordering::AcqRel);
+                    .fetch_add((buf.get_ref().len() - old_len) as u64, Ordering::AcqRel);
+
+                header.entry_count += 1;
             }
 
+            // write indexes
             self.idx_writer.append_log_indexes(idx)?;
             self.ts_idx_writer.append_log_indexes(ts_idx)?;
 
-            self.file.write_all(&buf)?;
-            self.file.write_at(0, &bincode::serialize(&header)?)?;
+            // write logs
+            self.file.write_all(buf.get_ref())?;
+            buf.get_mut().clear();
+
+            // write header
+            bincode::serialize_into(&mut buf, &header)?;
+            self.file.write_at(0, buf.get_ref())?;
             self.file.sync_data()?;
         }
 

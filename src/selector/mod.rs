@@ -11,13 +11,12 @@ use std::{
 use anyhow::{ensure, Result};
 use kanal::{bounded, unbounded, Receiver, Sender};
 
+use self::{index_reader::IndexReader, log_reader::LogReader};
 use crate::{
     formats::log::{Index, Timestamp, INDEX_HEADER, TS_INDEX_HEADER},
     util::{log_groups, LogGroup},
     Log,
 };
-
-use self::{index_reader::IndexReader, log_reader::LogReader};
 
 #[derive(Copy, Clone, Debug)]
 pub enum SelectRange {
@@ -36,8 +35,14 @@ pub struct LogSelector {
 impl LogSelector {
     /// Create a new [LogSelector].
     pub fn new(path: impl AsRef<Path>) -> Result<LogSelector> {
-        let groups = log_groups(path.as_ref());
+        let mut groups = log_groups(path.as_ref());
         ensure!(!groups.is_empty(), "Empty log directory");
+        // for match the last log group
+        groups.push(LogGroup {
+            id: u64::MAX,
+            ts: u64::MAX,
+        });
+        groups.sort();
 
         let (sender, receiver) = unbounded();
 

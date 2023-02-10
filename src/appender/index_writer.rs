@@ -1,16 +1,20 @@
+use std::{marker::PhantomData, thread};
+
 use anyhow::Result;
+use bytes::{BufMut, BytesMut};
 use kanal::{unbounded, Receiver, Sender};
-use std::{marker::PhantomData, mem::size_of, slice::from_raw_parts, thread};
+use smallvec::SmallVec;
 
 use crate::{
     checker::IndexChecker,
     formats::log::IndexFileHeader,
     util::{BlockIODevice, LogItem},
+    STACK_BUF_SIZE,
 };
 
 #[derive(Debug)]
 pub(crate) struct IndexWriter<F, I> {
-    sender: Sender<Vec<I>>,
+    sender: Sender<SmallVec<[I; STACK_BUF_SIZE]>>,
     phantom: PhantomData<F>,
 }
 
@@ -29,35 +33,44 @@ impl<F: BlockIODevice, I: LogItem> IndexWriter<F, I> {
         })
     }
 
-    pub(crate) fn append_log_indexes(&self, indexes: Vec<I>) -> Result<()> {
+    pub(crate) fn append_log_indexes(&self, indexes: SmallVec<[I; STACK_BUF_SIZE]>) -> Result<()> {
         // submit a task to worker
         Ok(self.sender.send(indexes)?)
     }
 }
 
-struct IndexWriterInner<F, T> {
+struct IndexWriterInner<F, I> {
     file: F,
-    receiver: Receiver<Vec<T>>,
+    receiver: Receiver<SmallVec<[I; STACK_BUF_SIZE]>>,
 }
 
 impl<F: BlockIODevice, T: LogItem> IndexWriterInner<F, T> {
     fn exec(mut self) -> Result<()> {
+        // 4k buffer
+        let mut buf = BytesMut::with_capacity(1 << 12);
+
         while let Ok(indexes) = self.receiver.recv() {
-            // let mut buf = Vec::with_capacity(256);
+            let mut w = buf.writer();
 
-            // for index in indexes {
-            //     let bytes = bincode::serialize(&index).unwrap();
-            //     buf.write_all(&bytes).unwrap();
-            // }
+            for index in indexes {
+                let size = bincode::serialized_size(&index).expect("Serialization failed");
+                w.get_mut().reserve(size as usize);
+                bincode::serialize_into(&mut w, &index).expect("Serialization failed");
+            }
 
-            let buf = unsafe {
-                from_raw_parts(
-                    indexes.as_ptr() as *const u8,
-                    indexes.len() * size_of::<T>(),
-                )
-            };
+            buf = w.into_inner();
 
-            self.file.write_all(&buf)?;
+            // Get written bytes from buffer
+            let bytes = buf.split().freeze();
+
+            // let buf = unsafe {
+            //     from_raw_parts(
+            //         indexes.as_ptr() as *const u8,
+            //         indexes.len() * size_of::<T>(),
+            //     )
+            // };
+
+            self.file.write_all(&bytes)?;
             self.file.sync_data()?;
         }
 

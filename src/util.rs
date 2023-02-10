@@ -4,12 +4,21 @@ use std::{
     path::Path,
 };
 
+use bytes::{buf::Writer, BytesMut};
 use positioned_io::{ReadAt, WriteAt};
 use serde::{Deserialize, Serialize};
 
-pub trait LogItem = Clone + Serialize + for<'a> Deserialize<'a> + Default + Send + Sync + 'static;
+use crate::formats::log::{Index, Timestamp};
 
-pub trait BlockIODevice: Read + Write + ReadAt + WriteAt + Seek + Sync + Send + 'static {
+pub(crate) trait LogItem:
+    Copy + Clone + Serialize + for<'a> Deserialize<'a> + Default + Send + Sync + 'static
+{
+}
+
+impl LogItem for Index {}
+impl LogItem for Timestamp {}
+
+pub(crate) trait BlockIODevice: Read + Write + ReadAt + WriteAt + Seek + Sync + Send + 'static {
     fn len(&self) -> Result<u64>;
     fn sync_data(&self) -> Result<()>;
 }
@@ -25,13 +34,13 @@ impl BlockIODevice for File {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
-pub struct LogGroup {
+pub(crate) struct LogGroup {
     pub id: u64,
     pub ts: u64,
 }
 
 // scan the log groups in the given path
-pub fn log_groups(log_dir: impl AsRef<Path>) -> Vec<LogGroup> {
+pub(crate) fn log_groups(log_dir: impl AsRef<Path>) -> Vec<LogGroup> {
     let Ok(dirs) = fs::read_dir(log_dir.as_ref()) else {
         return Vec::new();
     };

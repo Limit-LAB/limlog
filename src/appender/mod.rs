@@ -1,17 +1,17 @@
 mod index_writer;
 pub(crate) mod log_writer;
 
-use anyhow::{anyhow, ensure, Result};
-use crossbeam_queue::ArrayQueue;
 use std::{
     fs::{self, File},
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
 };
 
-use crate::{formats::log::Log, util::log_groups};
+use anyhow::{anyhow, ensure, Result};
+use crossbeam_queue::ArrayQueue;
 
 use self::log_writer::LogWriter;
+use crate::{formats::log::Log, util::log_groups};
 
 #[derive(Debug)]
 pub struct Builder {
@@ -27,8 +27,8 @@ impl Builder {
         Self {
             work_dir: path.as_ref().to_path_buf(),
             queue_size: 128,
-            flush_percent: 0.2,                   // 20%
-            file_size_threshold: 5 * 1024 * 1024, // 500 MiB
+            flush_percent: 0.2,                     // 20%
+            file_size_threshold: 500 * 1024 * 1024, // 500 MiB
         }
     }
 
@@ -40,8 +40,8 @@ impl Builder {
 
     /// Set the log file size threshold.
     ///
-    /// A new log file will be created when the log file size exceeds the threshold.
-    /// default is 500 MiB.
+    /// A new log file will be created when the log file size exceeds the
+    /// threshold. default is 500 MiB.
     pub fn file_size_threshold(mut self, file_size_threshold: u64) -> Builder {
         self.file_size_threshold = file_size_threshold;
         self
@@ -77,7 +77,7 @@ impl Builder {
                 writer.set(log_writer).ok()?;
                 Some(writer)
             })
-            .unwrap_or_else(|| OnceLock::new());
+            .unwrap_or_else(OnceLock::new);
 
         Ok(LogAppender {
             inner: Arc::new(LogAppenderInner {
@@ -174,11 +174,11 @@ impl LogAppender {
         let filename = format!("{id}_{ts}");
         let options = binding.append(true).read(true);
 
-        Ok(LogWriter::new(
+        LogWriter::new(
             options.open(log_file_path!(path.as_ref(), filename, "limlog"))?,
             options.open(log_file_path!(path.as_ref(), filename, "idx"))?,
             options.open(log_file_path!(path.as_ref(), filename, "ts.idx"))?,
-        )?)
+        )
     }
 
     fn recover_log_group(path: impl AsRef<Path>, id: u64, ts: u64) -> Result<()> {
@@ -206,11 +206,11 @@ impl LogAppender {
         let filename = format!("{id}_{ts}");
         let options = binding.append(true).create_new(true).read(true);
 
-        Ok(LogWriter::new(
+        LogWriter::new(
             options.open(log_file_path!(self.inner.work_dir, filename, "limlog"))?,
             options.open(log_file_path!(self.inner.work_dir, filename, "idx"))?,
             options.open(log_file_path!(self.inner.work_dir, filename, "ts.idx"))?,
-        )?)
+        )
     }
 }
 

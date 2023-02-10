@@ -1,8 +1,8 @@
 use std::mem::size_of;
 
-use crate::formats::log::IndexFileHeader;
-use crate::util::BlockIODevice;
 use anyhow::{anyhow, ensure, Result};
+
+use crate::{formats::log::IndexFileHeader, util::BlockIODevice};
 
 pub(crate) struct IndexChecker<'a, F> {
     file: &'a mut F,
@@ -34,7 +34,7 @@ impl<'a, F: BlockIODevice> IndexChecker<'a, F> {
             "Invalid log file: broken header"
         );
         ensure!(
-            (*self.file_size - size_of::<IndexFileHeader>() as u64) % self.index_size as u64 == 0,
+            (*self.file_size - size_of::<IndexFileHeader>() as u64) % self.index_size == 0,
             "Broken index file"
         );
 

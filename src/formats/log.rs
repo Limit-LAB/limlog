@@ -79,11 +79,21 @@ pub(crate) struct IndexFileHeader {
     // INDEXES
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
-pub(crate) struct Index(pub u64, pub u64);
+/// Index type. Notice that the size of this type is an invariant so that data
+/// can be correctly indexed.
+#[repr(C)]
+#[derive(Serialize, Deserialize, Debug, Default, Copy, Clone, PartialEq)]
+pub(crate) struct Index(
+    pub u64, // ID
+    pub u64, // OFFSET
+);
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
-pub(crate) struct Timestamp(pub u64, pub u64);
+#[repr(C)]
+#[derive(Serialize, Deserialize, Debug, Default, Copy, Clone, PartialEq)]
+pub(crate) struct Timestamp(
+    pub u64, // TS
+    pub u64, // OFFSET
+);
 
 impl_from_bytes!(Index);
 impl_from_bytes!(Timestamp);
