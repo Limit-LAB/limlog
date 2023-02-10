@@ -23,10 +23,12 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             }
 
             appender.insert_batch(batch).unwrap();
-        })
+        });
+
+        appender.flush().unwrap();
     });
 
-    thread::sleep(Duration::from_millis(5000));
+    thread::sleep(Duration::from_millis(1000));
 }
 
 criterion_group!(benches, criterion_benchmark);

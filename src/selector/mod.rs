@@ -36,8 +36,11 @@ pub struct LogSelector {
 impl LogSelector {
     /// Create a new [LogSelector].
     pub fn new(path: impl AsRef<Path>) -> Result<LogSelector> {
-        let groups = log_groups(path.as_ref());
+        let mut groups = log_groups(path.as_ref());
         ensure!(!groups.is_empty(), "Empty log directory");
+        // for match the last log group
+        groups.push(LogGroup { id: u64::MAX, ts: u64::MAX });
+        groups.sort();
 
         let (sender, receiver) = unbounded();
 

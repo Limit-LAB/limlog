@@ -19,6 +19,7 @@ smallvec = { version = "1.10", features = ["union", "const_new", "const_generics
 
 [dev-dependencies]
 criterion = "0.4.0"
+rand = "0.8.5"
 
 [profile.release]
 debug = true
