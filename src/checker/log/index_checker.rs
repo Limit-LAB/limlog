@@ -1,6 +1,6 @@
 use std::mem::size_of;
 
-use crate::formats::log::{IndexFileHeader, LogFileHeader};
+use crate::formats::log::IndexFileHeader;
 use crate::util::BlockIODevice;
 use anyhow::{anyhow, ensure, Result};
 
@@ -50,7 +50,7 @@ impl<'a, F: BlockIODevice> IndexChecker<'a, F> {
         if *self.file_size == 0 {
             let header = self.expected_header;
             self.file.write_all(&bincode::serialize(&header)?)?;
-            *self.file_size = size_of::<LogFileHeader>() as u64;
+            *self.file_size = size_of::<IndexFileHeader>() as u64;
 
             return Ok(());
         }

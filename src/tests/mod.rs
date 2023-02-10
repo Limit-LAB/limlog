@@ -68,6 +68,7 @@ impl BlockIODevice for TestFile {
     }
 }
 
+mod checker_test;
 mod log_format_test;
 mod reader_test;
 mod writer_test;
