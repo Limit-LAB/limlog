@@ -27,8 +27,8 @@ impl Builder {
         Self {
             work_dir: path.as_ref().to_path_buf(),
             queue_size: 128,
-            flush_percent: 0.2,                   // 20%
-            file_size_threshold: 5 * 1024 * 1024, // 500 MiB
+            flush_percent: 0.2,                     // 20%
+            file_size_threshold: 500 * 1024 * 1024, // 500 MiB
         }
     }
 

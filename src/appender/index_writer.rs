@@ -1,16 +1,18 @@
 use anyhow::Result;
 use kanal::{unbounded, Receiver, Sender};
+use smallvec::SmallVec;
 use std::{marker::PhantomData, mem::size_of, slice::from_raw_parts, thread};
 
 use crate::{
     checker::IndexChecker,
     formats::log::IndexFileHeader,
     util::{BlockIODevice, LogItem},
+    STACK_BUF_SIZE,
 };
 
 #[derive(Debug)]
 pub(crate) struct IndexWriter<F, I> {
-    sender: Sender<Vec<I>>,
+    sender: Sender<SmallVec<[I; STACK_BUF_SIZE]>>,
     phantom: PhantomData<F>,
 }
 
@@ -29,15 +31,15 @@ impl<F: BlockIODevice, I: LogItem> IndexWriter<F, I> {
         })
     }
 
-    pub(crate) fn append_log_indexes(&self, indexes: Vec<I>) -> Result<()> {
+    pub(crate) fn append_log_indexes(&self, indexes: SmallVec<[I; STACK_BUF_SIZE]>) -> Result<()> {
         // submit a task to worker
         Ok(self.sender.send(indexes)?)
     }
 }
 
-struct IndexWriterInner<F, T> {
+struct IndexWriterInner<F, I> {
     file: F,
-    receiver: Receiver<Vec<T>>,
+    receiver: Receiver<SmallVec<[I; STACK_BUF_SIZE]>>,
 }
 
 impl<F: BlockIODevice, T: LogItem> IndexWriterInner<F, T> {

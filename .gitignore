@@ -1,2 +1,5 @@
 /target
-/bench_dir
+/.bench_output
+/.logs
+perf*
+flamegraph.svg

@@ -15,3 +15,5 @@ mod util;
 
 #[cfg(test)]
 mod tests;
+
+const STACK_BUF_SIZE: usize = 256;

@@ -67,7 +67,7 @@ where
         Ok((left, right))
     }
 
-    // convert "index" of index item to file offset 
+    // convert "index" of index item to file offset
     #[inline]
     fn index_to_offset(&self, index: u64) -> u64 {
         debug_assert!(
