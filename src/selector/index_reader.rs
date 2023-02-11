@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, mem::size_of, ptr::read};
+use std::{marker::PhantomData, mem::size_of};
 
 use anyhow::Result;
 use positioned_io::ReadAt;
