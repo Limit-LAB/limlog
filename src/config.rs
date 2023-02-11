@@ -12,13 +12,13 @@ pub enum CacheWriteStrategy {
     WriteAfter,
 }
 
-
 pub enum GCStrategy {
     /// compact the file after threshold
     Compaction,
     /// delete the file after threshold
     Delete,
 }
+
 struct Config {
     folder_path: String,
     cache_write_strategy: CacheWriteStrategy,

@@ -1,0 +1,43 @@
+use std::mem::size_of;
+
+use anyhow::{ensure, Result};
+
+use crate::{formats::log::LogFileHeader, util::BlockIODevice};
+
+pub(crate) struct LogChecker<'a, F> {
+    file: &'a mut F,
+    file_size: &'a mut u64,
+}
+
+impl<'a, F: BlockIODevice> LogChecker<'a, F> {
+    // create a checker
+    pub fn check(file: &'a mut F, file_size: &'a mut u64) -> Self {
+        Self { file, file_size }
+    }
+
+    // check and get header only
+    pub fn header(self) -> Result<LogFileHeader> {
+        ensure!(*self.file_size > 0, "Empty log file");
+        ensure!(
+            *self.file_size >= size_of::<LogFileHeader>() as u64,
+            "Invalid log file: broken header"
+        );
+
+        let mut buf = [0u8; size_of::<LogFileHeader>()];
+        self.file.read_at(0, &mut buf)?;
+        Ok(bincode::deserialize(&buf)?)
+    }
+
+    // init header if file is empty
+    pub fn or_init(self) -> Result<LogFileHeader> {
+        if *self.file_size == 0 {
+            let header = LogFileHeader::default();
+            self.file.write_all(&bincode::serialize(&header)?)?;
+            *self.file_size = size_of::<LogFileHeader>() as u64;
+
+            return Ok(header);
+        }
+
+        self.header()
+    }
+}

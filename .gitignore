@@ -1,1 +1,5 @@
 /target
+/.bench_output
+/.logs
+perf*
+flamegraph.svg
