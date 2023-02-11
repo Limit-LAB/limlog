@@ -46,10 +46,13 @@ struct IndexWriterInner<F, I> {
 
 impl<F: BlockIODevice, I: IndexItem> IndexWriterInner<F, I> {
     fn exec(mut self) -> Result<()> {
-        // 4k buffer
-        let mut buf = BytesMut::with_capacity(size_of::<I>()).writer();
+        // 4k buf
+        let mut buf = BytesMut::with_capacity(1 >> 12).writer();
 
         while let Ok(indexes) = self.receiver.recv() {
+            buf.get_mut()
+                .reserve(indexes.len() as usize * size_of::<I>());
+
             for index in indexes {
                 bincode::serialize_into(&mut buf, &index).expect("Serialization failed");
             }
