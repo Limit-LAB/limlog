@@ -1,7 +1,9 @@
+use std::{marker::PhantomData, mem::size_of, slice::from_raw_parts, thread};
+
 use anyhow::Result;
+use bytes::{BufMut, BytesMut};
 use kanal::{unbounded, Receiver, Sender};
 use smallvec::SmallVec;
-use std::{marker::PhantomData, mem::size_of, slice::from_raw_parts, thread};
 
 use crate::{
     checker::IndexChecker,
@@ -44,22 +46,31 @@ struct IndexWriterInner<F, I> {
 
 impl<F: BlockIODevice, T: LogItem> IndexWriterInner<F, T> {
     fn exec(mut self) -> Result<()> {
+        // 4k buffer
+        let mut buf = BytesMut::with_capacity(1 << 12);
+
         while let Ok(indexes) = self.receiver.recv() {
-            // let mut buf = Vec::with_capacity(256);
+            let mut w = buf.writer();
 
-            // for index in indexes {
-            //     let bytes = bincode::serialize(&index).unwrap();
-            //     buf.write_all(&bytes).unwrap();
-            // }
+            for index in indexes {
+                let size = bincode::serialized_size(&index).expect("Serialization failed");
+                w.get_mut().reserve(size as usize);
+                bincode::serialize_into(&mut w, &index).expect("Serialization failed");
+            }
 
-            let buf = unsafe {
-                from_raw_parts(
-                    indexes.as_ptr() as *const u8,
-                    indexes.len() * size_of::<T>(),
-                )
-            };
+            buf = w.into_inner();
 
-            self.file.write_all(&buf)?;
+            // Get written bytes from buffer
+            let bytes = buf.split().freeze();
+
+            // let buf = unsafe {
+            //     from_raw_parts(
+            //         indexes.as_ptr() as *const u8,
+            //         indexes.len() * size_of::<T>(),
+            //     )
+            // };
+
+            self.file.write_all(&bytes)?;
             self.file.sync_data()?;
         }
 
