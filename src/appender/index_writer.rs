@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, thread};
+use std::{marker::PhantomData, mem::size_of, thread};
 
 use anyhow::Result;
 use bytes::{BufMut, BytesMut};
@@ -8,7 +8,7 @@ use smallvec::SmallVec;
 use crate::{
     checker::IndexChecker,
     formats::log::IndexFileHeader,
-    util::{BlockIODevice, LogItem},
+    util::{BlockIODevice, IndexItem},
     STACK_BUF_SIZE,
 };
 
@@ -18,7 +18,7 @@ pub(crate) struct IndexWriter<F, I> {
     phantom: PhantomData<F>,
 }
 
-impl<F: BlockIODevice, I: LogItem> IndexWriter<F, I> {
+impl<F: BlockIODevice, I: IndexItem> IndexWriter<F, I> {
     pub(crate) fn new(mut file: F, expected_header: IndexFileHeader) -> Result<Self> {
         let mut file_size = file.len()?;
         IndexChecker::check::<I>(&mut file, &mut file_size, expected_header).or_init()?;
@@ -44,24 +44,18 @@ struct IndexWriterInner<F, I> {
     receiver: Receiver<SmallVec<[I; STACK_BUF_SIZE]>>,
 }
 
-impl<F: BlockIODevice, T: LogItem> IndexWriterInner<F, T> {
+impl<F: BlockIODevice, I: IndexItem> IndexWriterInner<F, I> {
     fn exec(mut self) -> Result<()> {
-        // 4k buffer
-        let mut buf = BytesMut::with_capacity(1 << 12);
+        // 4k buf
+        let mut buf = BytesMut::with_capacity(1 >> 12).writer();
 
         while let Ok(indexes) = self.receiver.recv() {
-            let mut w = buf.writer();
+            buf.get_mut()
+                .reserve(indexes.len() as usize * size_of::<I>());
 
             for index in indexes {
-                let size = bincode::serialized_size(&index).expect("Serialization failed");
-                w.get_mut().reserve(size as usize);
-                bincode::serialize_into(&mut w, &index).expect("Serialization failed");
+                bincode::serialize_into(&mut buf, &index).expect("Serialization failed");
             }
-
-            buf = w.into_inner();
-
-            // Get written bytes from buffer
-            let bytes = buf.split().freeze();
 
             // let buf = unsafe {
             //     from_raw_parts(
@@ -70,8 +64,10 @@ impl<F: BlockIODevice, T: LogItem> IndexWriterInner<F, T> {
             //     )
             // };
 
-            self.file.write_all(&bytes)?;
+            self.file.write_all(&buf.get_ref())?;
             self.file.sync_data()?;
+
+            buf.get_mut().clear();
         }
 
         Ok(())
