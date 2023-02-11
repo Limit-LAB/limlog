@@ -77,7 +77,7 @@ impl Builder {
                 writer.set(log_writer).ok()?;
                 Some(writer)
             })
-            .unwrap_or_else(|| OnceLock::new());
+            .unwrap_or_else(OnceLock::new);
 
         Ok(LogAppender {
             inner: Arc::new(LogAppenderInner {
@@ -174,11 +174,11 @@ impl LogAppender {
         let filename = format!("{id}_{ts}");
         let options = binding.append(true).read(true);
 
-        Ok(LogWriter::new(
+        LogWriter::new(
             options.open(log_file_path!(path.as_ref(), filename, "limlog"))?,
             options.open(log_file_path!(path.as_ref(), filename, "idx"))?,
             options.open(log_file_path!(path.as_ref(), filename, "ts.idx"))?,
-        )?)
+        )
     }
 
     fn recover_log_group(path: impl AsRef<Path>, id: u64, ts: u64) -> Result<()> {
@@ -206,11 +206,11 @@ impl LogAppender {
         let filename = format!("{id}_{ts}");
         let options = binding.append(true).create_new(true).read(true);
 
-        Ok(LogWriter::new(
+        LogWriter::new(
             options.open(log_file_path!(self.inner.work_dir, filename, "limlog"))?,
             options.open(log_file_path!(self.inner.work_dir, filename, "idx"))?,
             options.open(log_file_path!(self.inner.work_dir, filename, "ts.idx"))?,
-        )?)
+        )
     }
 }
 

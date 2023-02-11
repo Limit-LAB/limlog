@@ -17,8 +17,7 @@ fn test_reader() {
     let log_file = TestFile::new(
         LOG_FILE_HEADER
             .iter()
-            .chain(LOG1.iter().chain(LOG2.iter().chain(LOG3.iter())))
-            .map(|b| *b)
+            .chain(LOG1.iter().chain(LOG2.iter().chain(LOG3.iter()))).copied()
             .collect::<Vec<_>>(),
     );
 
@@ -52,8 +51,7 @@ fn test_reader() {
     let idx_file = TestFile::new(
         INDEX_FILE_HEADER
             .iter()
-            .chain(INDEX1.iter().chain(INDEX2.iter().chain(INDEX3.iter())))
-            .map(|b| *b)
+            .chain(INDEX1.iter().chain(INDEX2.iter().chain(INDEX3.iter()))).copied()
             .collect::<Vec<_>>(),
     );
 
@@ -77,8 +75,7 @@ fn test_reader() {
                 TIMESTAMP1
                     .iter()
                     .chain(TIMESTAMP2.iter().chain(TIMESTAMP3.iter())),
-            )
-            .map(|b| *b)
+            ).copied()
             .collect::<Vec<_>>(),
     );
 

@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, mem::size_of, slice::from_raw_parts, thread};
+use std::{marker::PhantomData, thread};
 
 use anyhow::Result;
 use bytes::{BufMut, BytesMut};

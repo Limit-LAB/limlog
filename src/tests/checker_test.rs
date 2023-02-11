@@ -35,8 +35,7 @@ fn log_file_check() {
     let mut log_file = TestFile::new(
         LOG_FILE_HEADER
             .iter()
-            .chain(LOG1.iter().chain(LOG2.iter().chain(LOG3.iter())))
-            .map(|b| *b)
+            .chain(LOG1.iter().chain(LOG2.iter().chain(LOG3.iter()))).copied()
             .collect::<Vec<_>>(),
     );
     let mut log_len = log_file.len().unwrap();
@@ -74,8 +73,7 @@ fn idx_file_check() {
     let mut idx_file = TestFile::new(
         INDEX_FILE_HEADER
             .iter()
-            .chain(INDEX1.iter().chain(INDEX2.iter().chain(INDEX3.iter())))
-            .map(|b| *b)
+            .chain(INDEX1.iter().chain(INDEX2.iter().chain(INDEX3.iter()))).copied()
             .collect::<Vec<_>>(),
     );
     let mut idx_len = idx_file.len().unwrap();

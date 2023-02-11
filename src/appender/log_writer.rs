@@ -98,12 +98,12 @@ impl<F: BlockIODevice> LogWriterInner<F> {
             self.ts_idx_writer.append_log_indexes(ts_idx)?;
 
             // write logs
-            self.file.write_all(&buf.get_ref())?;
+            self.file.write_all(buf.get_ref())?;
             buf.get_mut().clear();
 
             // write header
             bincode::serialize_into(&mut buf, &header)?;
-            self.file.write_at(0, &buf.get_ref())?;
+            self.file.write_at(0, buf.get_ref())?;
             self.file.sync_data()?;
         }
 

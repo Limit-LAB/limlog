@@ -34,7 +34,7 @@ impl<'a, F: BlockIODevice> IndexChecker<'a, F> {
             "Invalid log file: broken header"
         );
         ensure!(
-            (*self.file_size - size_of::<IndexFileHeader>() as u64) % self.index_size as u64 == 0,
+            (*self.file_size - size_of::<IndexFileHeader>() as u64) % self.index_size == 0,
             "Broken index file"
         );
 
