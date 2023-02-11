@@ -4,21 +4,22 @@ use std::{
     path::Path,
 };
 
-use bytes::{buf::Writer, BytesMut};
 use positioned_io::{ReadAt, WriteAt};
 use serde::{Deserialize, Serialize};
 
 use crate::formats::log::{Index, Timestamp};
 
-pub(crate) trait LogItem:
+pub(crate) trait IndexItem:
     Copy + Clone + Serialize + for<'a> Deserialize<'a> + Default + Send + Sync + 'static
 {
 }
 
-impl LogItem for Index {}
-impl LogItem for Timestamp {}
+impl IndexItem for Index {}
+impl IndexItem for Timestamp {}
 
-pub(crate) trait BlockIODevice: Read + Write + ReadAt + WriteAt + Seek + Sync + Send + 'static {
+pub(crate) trait BlockIODevice:
+    Read + Write + ReadAt + WriteAt + Seek + Sync + Send + 'static
+{
     fn len(&self) -> Result<u64>;
     fn sync_data(&self) -> Result<()>;
 }

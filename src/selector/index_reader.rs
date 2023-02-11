@@ -6,7 +6,7 @@ use positioned_io::ReadAt;
 use crate::{
     checker::IndexChecker,
     formats::log::IndexFileHeader,
-    util::{BlockIODevice, LogItem},
+    util::{BlockIODevice, IndexItem},
 };
 
 #[derive(Debug)]
@@ -20,7 +20,7 @@ pub(crate) struct IndexReader<F, I> {
 impl<F, I> IndexReader<F, I>
 where
     F: BlockIODevice,
-    I: LogItem + PartialOrd,
+    I: IndexItem + PartialOrd,
     [u8; size_of::<I>()]: Sized,
 {
     pub(crate) fn new(mut file: F, expected_header: IndexFileHeader) -> Result<IndexReader<F, I>> {
