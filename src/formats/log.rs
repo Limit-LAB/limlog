@@ -79,10 +79,10 @@ pub(crate) struct IndexFileHeader {
     // INDEXES
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Default, Copy, Clone, PartialEq)]
 pub(crate) struct Index(pub u64, pub u64);
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Default, Copy, Clone, PartialEq)]
 pub(crate) struct Timestamp(pub u64, pub u64);
 
 impl_from_bytes!(Index);

@@ -7,7 +7,8 @@ use std::{
 use positioned_io::{ReadAt, WriteAt};
 use serde::{Deserialize, Serialize};
 
-pub trait LogItem = Clone + Serialize + for<'a> Deserialize<'a> + Default + Send + Sync + 'static;
+pub trait LogItem =
+    Copy + Clone + Serialize + for<'a> Deserialize<'a> + Default + Send + Sync + 'static;
 
 pub trait BlockIODevice: Read + Write + ReadAt + WriteAt + Seek + Sync + Send + 'static {
     fn len(&self) -> Result<u64>;
