@@ -79,6 +79,9 @@ pub(crate) struct IndexFileHeader {
     // INDEXES
 }
 
+/// Index type. Notice that the size of this type is an invariant so that data
+/// can be correctly indexed.
+#[repr(C)]
 #[derive(Serialize, Deserialize, Debug, Default, Copy, Clone, PartialEq)]
 pub(crate) struct Index(pub u64, pub u64);
 
