@@ -1,6 +1,7 @@
 use std::{marker::PhantomData, mem::size_of, ptr::read};
 
 use anyhow::Result;
+use positioned_io::ReadAt;
 
 use crate::{
     checker::IndexChecker,
@@ -80,10 +81,27 @@ where
     // get index item by given "index"
     #[inline]
     fn index_item(&self, index: u64) -> Result<I> {
-        let mut buf = [0u8; size_of::<I>()];
-        self.file
-            .read_at(self.index_to_offset(index), buf.as_mut_slice())?;
-        // Ok(bincode::deserialize(&buf)?)
-        Ok(unsafe { read(buf.as_ptr() as *const _) })
+        let cur = ReadAtCursor {
+            file: &self.file,
+            pos: self.index_to_offset(index),
+        };
+
+        Ok(bincode::deserialize_from(cur)?)
+    }
+}
+
+/// A wrapper of `ReadAt` to implement `std::io::Read` so that even `&self` can
+/// be read and write. It is possible to add a `for<'a> &'a F: Read` but I'm too
+/// lazy to add impl for `TestFile`.
+pub struct ReadAtCursor<'a, F> {
+    file: &'a F,
+    pos: u64,
+}
+
+impl<'a, F: ReadAt> std::io::Read for ReadAtCursor<'a, F> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let len = self.file.read_at(self.pos, buf)?;
+        self.pos += len as u64;
+        Ok(len)
     }
 }
