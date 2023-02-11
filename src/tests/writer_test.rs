@@ -1,5 +1,9 @@
 use std::{thread, time::Duration};
 
+use super::{
+    log_format_test::{LOG1, LOG2, LOG3, LOG_FILE_HEADER},
+    TestFile,
+};
 use crate::{
     appender::log_writer::LogWriter,
     tests::log_format_test::{
@@ -7,11 +11,6 @@ use crate::{
         TS_INDEX_FILE_HEADER,
     },
     Log,
-};
-
-use super::{
-    log_format_test::{LOG1, LOG2, LOG3, LOG_FILE_HEADER},
-    TestFile,
 };
 
 #[test]
@@ -49,12 +48,14 @@ fn test_writer() {
 
     let expected_log_file = LOG_FILE_HEADER
         .iter()
-        .chain(LOG1.iter().chain(LOG2.iter().chain(LOG3.iter()))).copied()
+        .chain(LOG1.iter().chain(LOG2.iter().chain(LOG3.iter())))
+        .copied()
         .collect::<Vec<_>>();
 
     let expected_idx_file = INDEX_FILE_HEADER
         .iter()
-        .chain(INDEX1.iter().chain(INDEX2.iter().chain(INDEX3.iter()))).copied()
+        .chain(INDEX1.iter().chain(INDEX2.iter().chain(INDEX3.iter())))
+        .copied()
         .collect::<Vec<_>>();
 
     let expected_ts_idx_file = TS_INDEX_FILE_HEADER
@@ -63,7 +64,8 @@ fn test_writer() {
             TIMESTAMP1
                 .iter()
                 .chain(TIMESTAMP2.iter().chain(TIMESTAMP3.iter())),
-        ).copied()
+        )
+        .copied()
         .collect::<Vec<_>>();
 
     assert_eq!(log_file.get_buf(), expected_log_file);

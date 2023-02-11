@@ -1,17 +1,17 @@
 mod index_writer;
 pub(crate) mod log_writer;
 
-use anyhow::{anyhow, ensure, Result};
-use crossbeam_queue::ArrayQueue;
 use std::{
     fs::{self, File},
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
 };
 
-use crate::{formats::log::Log, util::log_groups};
+use anyhow::{anyhow, ensure, Result};
+use crossbeam_queue::ArrayQueue;
 
 use self::log_writer::LogWriter;
+use crate::{formats::log::Log, util::log_groups};
 
 #[derive(Debug)]
 pub struct Builder {
@@ -40,8 +40,8 @@ impl Builder {
 
     /// Set the log file size threshold.
     ///
-    /// A new log file will be created when the log file size exceeds the threshold.
-    /// default is 500 MiB.
+    /// A new log file will be created when the log file size exceeds the
+    /// threshold. default is 500 MiB.
     pub fn file_size_threshold(mut self, file_size_threshold: u64) -> Builder {
         self.file_size_threshold = file_size_threshold;
         self

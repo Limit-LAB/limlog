@@ -1,9 +1,3 @@
-use crate::{
-    formats::log::{Index, Timestamp, INDEX_HEADER, TS_INDEX_HEADER},
-    selector::{index_reader::IndexReader, log_reader::LogReader},
-    Log,
-};
-
 use super::{
     log_format_test::{
         INDEX1, INDEX2, INDEX3, INDEX_FILE_HEADER, LOG1, LOG2, LOG3, LOG_FILE_HEADER, TIMESTAMP1,
@@ -11,13 +5,19 @@ use super::{
     },
     TestFile,
 };
+use crate::{
+    formats::log::{Index, Timestamp, INDEX_HEADER, TS_INDEX_HEADER},
+    selector::{index_reader::IndexReader, log_reader::LogReader},
+    Log,
+};
 
 #[test]
 fn test_reader() {
     let log_file = TestFile::new(
         LOG_FILE_HEADER
             .iter()
-            .chain(LOG1.iter().chain(LOG2.iter().chain(LOG3.iter()))).copied()
+            .chain(LOG1.iter().chain(LOG2.iter().chain(LOG3.iter())))
+            .copied()
             .collect::<Vec<_>>(),
     );
 
@@ -51,7 +51,8 @@ fn test_reader() {
     let idx_file = TestFile::new(
         INDEX_FILE_HEADER
             .iter()
-            .chain(INDEX1.iter().chain(INDEX2.iter().chain(INDEX3.iter()))).copied()
+            .chain(INDEX1.iter().chain(INDEX2.iter().chain(INDEX3.iter())))
+            .copied()
             .collect::<Vec<_>>(),
     );
 
@@ -75,7 +76,8 @@ fn test_reader() {
                 TIMESTAMP1
                     .iter()
                     .chain(TIMESTAMP2.iter().chain(TIMESTAMP3.iter())),
-            ).copied()
+            )
+            .copied()
             .collect::<Vec<_>>(),
     );
 

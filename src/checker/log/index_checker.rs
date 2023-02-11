@@ -1,8 +1,8 @@
 use std::mem::size_of;
 
-use crate::formats::log::IndexFileHeader;
-use crate::util::BlockIODevice;
 use anyhow::{anyhow, ensure, Result};
+
+use crate::{formats::log::IndexFileHeader, util::BlockIODevice};
 
 pub(crate) struct IndexChecker<'a, F> {
     file: &'a mut F,

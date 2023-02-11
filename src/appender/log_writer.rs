@@ -1,7 +1,3 @@
-use anyhow::Result;
-use bytes::{BufMut, BytesMut};
-use kanal::{unbounded, Receiver, Sender};
-use smallvec::SmallVec;
 use std::{
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -9,6 +5,11 @@ use std::{
     },
     thread,
 };
+
+use anyhow::Result;
+use bytes::{BufMut, BytesMut};
+use kanal::{unbounded, Receiver, Sender};
+use smallvec::SmallVec;
 
 use crate::{
     appender::index_writer::IndexWriter,

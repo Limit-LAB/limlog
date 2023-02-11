@@ -1,5 +1,6 @@
 use std::mem::size_of;
 
+use super::TestFile;
 use crate::{
     checker::{IndexChecker, LogChecker},
     formats::log::{Index, IndexFileHeader, LogFileHeader, INDEX_HEADER, TS_INDEX_HEADER},
@@ -8,8 +9,6 @@ use crate::{
     },
     util::BlockIODevice,
 };
-
-use super::TestFile;
 
 #[test]
 fn test_checker() {
@@ -35,7 +34,8 @@ fn log_file_check() {
     let mut log_file = TestFile::new(
         LOG_FILE_HEADER
             .iter()
-            .chain(LOG1.iter().chain(LOG2.iter().chain(LOG3.iter()))).copied()
+            .chain(LOG1.iter().chain(LOG2.iter().chain(LOG3.iter())))
+            .copied()
             .collect::<Vec<_>>(),
     );
     let mut log_len = log_file.len().unwrap();
@@ -54,9 +54,11 @@ fn log_file_check() {
     // invalid log file
     let mut log_file = TestFile::new(log_file.get_buf()[0..11].into());
     let mut log_len = log_file.len().unwrap();
-    assert!(LogChecker::check(&mut log_file, &mut log_len)
-        .header()
-        .is_err());
+    assert!(
+        LogChecker::check(&mut log_file, &mut log_len)
+            .header()
+            .is_err()
+    );
 }
 
 fn idx_file_check() {
@@ -73,7 +75,8 @@ fn idx_file_check() {
     let mut idx_file = TestFile::new(
         INDEX_FILE_HEADER
             .iter()
-            .chain(INDEX1.iter().chain(INDEX2.iter().chain(INDEX3.iter()))).copied()
+            .chain(INDEX1.iter().chain(INDEX2.iter().chain(INDEX3.iter())))
+            .copied()
             .collect::<Vec<_>>(),
     );
     let mut idx_len = idx_file.len().unwrap();
