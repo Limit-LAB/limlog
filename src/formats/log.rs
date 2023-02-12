@@ -13,10 +13,10 @@ macro_rules! impl_from_bytes {
 }
 
 macro_rules! impl_key_ord {
-    ($class:ty) => {
+    ($class:ty, $key:ident) => {
         impl PartialOrd for $class {
             fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-                self.0.partial_cmp(&other.0)
+                self.$key.partial_cmp(&other.$key)
             }
         }
     };
@@ -51,25 +51,25 @@ pub(crate) struct IndexFileHeader {
     // INDEXES
 }
 
-/// Index type. Notice that the size of this type is an invariant so that data
-/// can be correctly indexed.
+/// Index of ID
 #[repr(C)]
 #[derive(Serialize, Deserialize, Debug, Default, Copy, Clone, PartialEq)]
-pub(crate) struct Index(
-    pub u64, // ID
-    pub u64, // OFFSET
-);
+pub(crate) struct IdIndex {
+    pub id: u64,     // ID
+    pub offset: u64, // OFFSET
+}
 
+/// Index of timestamp
 #[repr(C)]
 #[derive(Serialize, Deserialize, Debug, Default, Copy, Clone, PartialEq)]
-pub(crate) struct Timestamp(
-    pub u64, // TS
-    pub u64, // OFFSET
-);
+pub(crate) struct TsIndex {
+    pub ts: u64,     // TS
+    pub offset: u64, // OFFSET
+}
 
-impl_from_bytes!(Index);
-impl_from_bytes!(Timestamp);
+impl_from_bytes!(IdIndex);
+impl_from_bytes!(TsIndex);
 impl_from_bytes!(IndexFileHeader);
 
-impl_key_ord!(Index);
-impl_key_ord!(Timestamp);
+impl_key_ord!(IdIndex, id);
+impl_key_ord!(TsIndex, ts);

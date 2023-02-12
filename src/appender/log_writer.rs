@@ -14,7 +14,7 @@ use smallvec::SmallVec;
 use crate::{
     appender::index_writer::IndexWriter,
     checker::LogChecker,
-    formats::log::{Index, Log, LogFileHeader, Timestamp, INDEX_HEADER, TS_INDEX_HEADER},
+    formats::log::{IdIndex, Log, LogFileHeader, TsIndex, INDEX_HEADER, TS_INDEX_HEADER},
     util::BlockIODevice,
 };
 
@@ -64,8 +64,8 @@ struct LogWriterInner<F> {
     file: F,
     file_size: Arc<AtomicU64>,
     receiver: Receiver<Vec<Log>>,
-    idx_writer: IndexWriter<F, Index>,
-    ts_idx_writer: IndexWriter<F, Timestamp>,
+    idx_writer: IndexWriter<F, IdIndex>,
+    ts_idx_writer: IndexWriter<F, TsIndex>,
 }
 
 impl<F: BlockIODevice> LogWriterInner<F> {
@@ -83,8 +83,14 @@ impl<F: BlockIODevice> LogWriterInner<F> {
             for log in logs {
                 let file_size = self.file_size.load(Ordering::Acquire);
 
-                idx.push(Index(log.id, file_size));
-                ts_idx.push(Timestamp(log.ts, file_size));
+                idx.push(IdIndex {
+                    id: log.id,
+                    offset: file_size,
+                });
+                ts_idx.push(TsIndex {
+                    ts: log.ts,
+                    offset: file_size,
+                });
 
                 let old_len = buf.get_ref().len();
                 bincode::serialize_into(&mut buf, &log)?;
