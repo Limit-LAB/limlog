@@ -13,7 +13,7 @@ use kanal::{bounded, unbounded, Receiver, Sender};
 
 use self::{index_reader::IndexReader, log_reader::LogReader};
 use crate::{
-    formats::log::{Index, Timestamp, INDEX_HEADER, TS_INDEX_HEADER},
+    formats::log::{IdIndex, TsIndex, INDEX_HEADER, TS_INDEX_HEADER},
     util::{log_groups, LogGroup},
     Log,
 };
@@ -99,8 +99,8 @@ struct LogSelectorInner {
 #[derive(Debug)]
 struct ReaderSet {
     log: LogReader<File>,
-    idx: IndexReader<File, Index>,
-    ts_idx: IndexReader<File, Timestamp>,
+    idx: IndexReader<File, IdIndex>,
+    ts_idx: IndexReader<File, TsIndex>,
 }
 
 impl LogSelectorInner {
@@ -128,12 +128,12 @@ impl LogSelectorInner {
                 let Some((start, count)) = (match range {
                     SelectRange::Timestamp(start, end) => set
                         .ts_idx
-                        .select_range(&Timestamp(start, 0), &Timestamp(end, 0))?
-                        .map(|(ts_idx, count)| (ts_idx.1, count)),
+                        .select_range(&TsIndex { ts: start, offset: 0 }, &TsIndex { ts: end, offset: 0 })?
+                        .map(|(ts_idx, count)| (ts_idx.ts, count)),
                     SelectRange::Id(start, end) => set
                         .idx
-                        .select_range(&Index(start, 0), &Index(end, 0))?
-                        .map(|(idx, count)| (idx.1, count)),
+                        .select_range(&IdIndex { id: start, offset: 0 }, &IdIndex { id: end, offset: 0 })?
+                        .map(|(idx, count)| (idx.id, count)),
                 }) else { continue };
 
                 res.extend(set.log.select_logs(start, count)?);

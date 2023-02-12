@@ -6,7 +6,7 @@ use super::{
     TestFile,
 };
 use crate::{
-    formats::log::{Index, Timestamp, INDEX_HEADER, TS_INDEX_HEADER},
+    formats::log::{IdIndex, TsIndex, INDEX_HEADER, TS_INDEX_HEADER},
     selector::{index_reader::IndexReader, log_reader::LogReader},
     Log,
 };
@@ -59,15 +59,15 @@ fn test_reader() {
     let idx_reader = IndexReader::new(idx_file, INDEX_HEADER).unwrap();
 
     let res = idx_reader
-        .select_range(&Index(0, 0), &Index(2, 0))
+        .select_range(&IdIndex { id: 0, offset: 0 }, &IdIndex { id: 2, offset: 0 })
         .unwrap()
         .unwrap();
-    assert_eq!(res, (Index(1, 24), 2));
+    assert_eq!(res, (IdIndex { id: 1, offset: 24 }, 2));
     let res = idx_reader
-        .select_range(&Index(2, 0), &Index(4, 0))
+        .select_range(&IdIndex { id: 2, offset: 0 }, &IdIndex { id: 4, offset: 0 })
         .unwrap()
         .unwrap();
-    assert_eq!(res, (Index(1, 24), 2));
+    assert_eq!(res, (IdIndex { id: 1, offset: 24 }, 2));
 
     let ts_idx_file = TestFile::new(
         TS_INDEX_FILE_HEADER
@@ -84,13 +84,13 @@ fn test_reader() {
     let idx_reader = IndexReader::new(ts_idx_file, TS_INDEX_HEADER).unwrap();
 
     let res = idx_reader
-        .select_range(&Timestamp(0, 0), &Timestamp(2, 0))
+        .select_range(&TsIndex { ts: 0, offset: 0 }, &TsIndex { ts: 2, offset: 0 })
         .unwrap()
         .unwrap();
-    assert_eq!(res, (Timestamp(1, 24), 2));
+    assert_eq!(res, (TsIndex { ts: 1, offset: 24 }, 2));
     let res = idx_reader
-        .select_range(&Timestamp(1, 0), &Timestamp(4, 0))
+        .select_range(&TsIndex { ts: 1, offset: 0 }, &TsIndex { ts: 4, offset: 0 })
         .unwrap()
         .unwrap();
-    assert_eq!(res, (Timestamp(1, 24), 2));
+    assert_eq!(res, (TsIndex { ts: 1, offset: 24 }, 2));
 }

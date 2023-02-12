@@ -1,5 +1,5 @@
 use crate::formats::log::{
-    Index, IndexFileHeader, Log, LogFileHeader, Timestamp, INDEX_HEADER, TS_INDEX_HEADER,
+    IdIndex, IndexFileHeader, Log, LogFileHeader, TsIndex, INDEX_HEADER, TS_INDEX_HEADER,
 };
 
 pub(crate) const LOG1: [u8; 34] = [
@@ -73,14 +73,14 @@ fn test_log_format() {
     let l3 = Log::try_from(&LOG3[..]).unwrap();
     let lh = LogFileHeader::try_from(&LOG_FILE_HEADER[..]).unwrap();
 
-    let idx1 = Index::try_from(&INDEX1[..]).unwrap();
-    let idx2 = Index::try_from(&INDEX2[..]).unwrap();
-    let idx3 = Index::try_from(&INDEX3[..]).unwrap();
+    let idx1 = IdIndex::try_from(&INDEX1[..]).unwrap();
+    let idx2 = IdIndex::try_from(&INDEX2[..]).unwrap();
+    let idx3 = IdIndex::try_from(&INDEX3[..]).unwrap();
     let idx_h = IndexFileHeader::try_from(&INDEX_FILE_HEADER[..]).unwrap();
 
-    let ts_idx1 = Timestamp::try_from(&TIMESTAMP1[..]).unwrap();
-    let ts_idx2 = Timestamp::try_from(&TIMESTAMP2[..]).unwrap();
-    let ts_idx3 = Timestamp::try_from(&TIMESTAMP3[..]).unwrap();
+    let ts_idx1 = TsIndex::try_from(&TIMESTAMP1[..]).unwrap();
+    let ts_idx2 = TsIndex::try_from(&TIMESTAMP2[..]).unwrap();
+    let ts_idx3 = TsIndex::try_from(&TIMESTAMP3[..]).unwrap();
     let ts_idx_h = IndexFileHeader::try_from(&TS_INDEX_FILE_HEADER[..]).unwrap();
 
     assert_eq!(
@@ -120,13 +120,13 @@ fn test_log_format() {
         lh
     );
 
-    assert_eq!(Index(1, 24), idx1);
-    assert_eq!(Index(2, 58), idx2);
-    assert_eq!(Index(3, 92), idx3);
+    assert_eq!(IdIndex { id: 1, offset: 24 }, idx1);
+    assert_eq!(IdIndex { id: 2, offset: 58 }, idx2);
+    assert_eq!(IdIndex { id: 3, offset: 92 }, idx3);
     assert_eq!(INDEX_HEADER, idx_h);
 
-    assert_eq!(Timestamp(1, 24), ts_idx1);
-    assert_eq!(Timestamp(2, 58), ts_idx2);
-    assert_eq!(Timestamp(3, 92), ts_idx3);
+    assert_eq!(TsIndex { ts: 1, offset: 24 }, ts_idx1);
+    assert_eq!(TsIndex { ts: 2, offset: 58 }, ts_idx2);
+    assert_eq!(TsIndex { ts: 3, offset: 92 }, ts_idx3);
     assert_eq!(TS_INDEX_HEADER, ts_idx_h);
 }
