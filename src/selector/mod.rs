@@ -8,14 +8,14 @@ use std::{
     thread,
 };
 
-use anyhow::{ensure, Result};
 use kanal::{bounded, unbounded, Receiver, Sender};
 
 use self::{index_reader::IndexReader, log_reader::LogReader};
 use crate::{
+    ensure,
     formats::log::{IdIndex, TsIndex, INDEX_HEADER, TS_INDEX_HEADER},
     util::{log_groups, LogGroup},
-    Log,
+    Log, Result,
 };
 
 #[derive(Copy, Clone, Debug)]
