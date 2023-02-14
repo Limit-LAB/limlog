@@ -1,47 +1,42 @@
 use std::{
-    fs::{self, File},
-    io::{Read, Result, Seek, Write},
+    fs,
     path::Path,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use positioned_io::{ReadAt, WriteAt};
-use serde::{Deserialize, Serialize};
+use uuid7::Uuid;
 
-use crate::formats::log::{IdIndex, TsIndex};
+pub(crate) trait ToTime {
+    /// Retrieve the [SystemTime] of the object.
+    fn to_system_time(&self) -> SystemTime;
 
-pub(crate) trait IndexItem:
-    Copy + Clone + Serialize + for<'a> Deserialize<'a> + Default + Send + Sync + 'static
-{
+    /// Retrieve the timestamp of the object.
+    fn to_ts(&self) -> u64;
 }
 
-impl IndexItem for IdIndex {}
-impl IndexItem for TsIndex {}
-
-pub(crate) trait BlockIODevice:
-    Read + Write + ReadAt + WriteAt + Seek + Sync + Send + 'static
-{
-    fn len(&self) -> Result<u64>;
-    fn sync_data(&self) -> Result<()>;
-}
-
-impl BlockIODevice for File {
-    fn len(&self) -> Result<u64> {
-        Ok(self.metadata()?.len())
+impl ToTime for Uuid {
+    #[inline]
+    fn to_system_time(&self) -> SystemTime {
+        UNIX_EPOCH + Duration::from_millis(self.to_ts())
     }
 
-    fn sync_data(&self) -> Result<()> {
-        self.sync_data()
+    #[inline]
+    fn to_ts(&self) -> u64 {
+        let mut bytes = [0; 8];
+        (&mut bytes[2..]).copy_from_slice(&self.as_bytes()[..6]);
+        u64::from_be_bytes(bytes)
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
-pub(crate) struct LogGroup {
-    pub id: u64,
-    pub ts: u64,
+#[inline]
+pub(crate) fn to_uuid(ts: u64, fill: u8) -> Uuid {
+    let mut uuid = [fill; 16];
+    (&mut uuid[..6]).copy_from_slice(&ts.to_be_bytes()[2..8]);
+    Uuid::from(uuid)
 }
 
 // scan the log groups in the given path
-pub(crate) fn log_groups(log_dir: impl AsRef<Path>) -> Vec<LogGroup> {
+pub(crate) fn log_groups(log_dir: impl AsRef<Path>) -> Vec<Uuid> {
     let Ok(dirs) = fs::read_dir(log_dir.as_ref()) else {
         return Vec::new();
     };
@@ -53,17 +48,13 @@ pub(crate) fn log_groups(log_dir: impl AsRef<Path>) -> Vec<LogGroup> {
 
             (path.is_file() && path.extension().unwrap_or_default().eq("limlog")).then_some(())?;
 
-            let name = path.file_stem()?.to_str()?;
-            let ret = name.split_once('_').and_then(|(id, ts)| {
-                Some(LogGroup {
-                    id: id.parse::<u64>().ok()?,
-                    ts: ts.parse::<u64>().ok()?,
-                })
-            })?;
+            let uuid = path.file_stem()?.to_str()?.parse::<Uuid>().ok()?;
 
-            (log_dir.as_ref().join(format!("{name}.idx")).is_file()
-                && log_dir.as_ref().join(format!("{name}.ts.idx")).is_file())
-            .then_some(ret)
+            log_dir
+                .as_ref()
+                .join(format!("{uuid}.idx"))
+                .is_file()
+                .then_some(uuid)
         })
         .collect()
 }
