@@ -5,8 +5,6 @@ use std::{
 
 use positioned_io::{ReadAt, WriteAt};
 
-use crate::util::BlockIODevice;
-
 #[derive(Debug, Clone)]
 struct TestFile(Arc<RwLock<Cursor<Vec<u8>>>>);
 
@@ -58,17 +56,4 @@ impl WriteAt for TestFile {
     }
 }
 
-impl BlockIODevice for TestFile {
-    fn len(&self) -> std::io::Result<u64> {
-        Ok(self.0.read().unwrap().get_ref().len() as _)
-    }
-
-    fn sync_data(&self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-mod checker_test;
 mod log_format_test;
-mod reader_test;
-mod writer_test;

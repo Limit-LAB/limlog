@@ -1,30 +1,30 @@
 [package]
-name = "limlog"
+name    = "limlog"
 version = "0.2.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-positioned-io = "0.3.1"
-bincode = "1.3"
-bitflags = "1.3"
-bytes = "1.4"
-serde = { version = "1", features = ["derive"] }
-thiserror = "1.0"
+positioned-io   = "0.3.1"
+bincode         = "1.3"
+bitflags        = "1.3"
+bytes           = "1.4"
+serde           = { version = "1", features = ["derive"] }
+anyhow          = "1"
+thiserror       = "1.0"
 crossbeam-queue = "0.3"
-kanal = { version = "0.1.0-pre8", default-features = false }
-smallvec = { version = "1.10", features = ["union", "const_new", "const_generics", "specialization"] }
-memmap2 = "0.5.8"
-event-listener = "2.5.3"
+kanal           = { version = "0.1.0-pre8", default-features = false }
+smallvec        = { version = "1.10", features = ["union", "const_new", "const_generics", "specialization"] }
+memmap2         = "0.5.8"
+
+[dependencies.uuid7]
+version  = "0.3.4"
+features = ["serde"]
+git      = "https://github.com/George-Miao/uuid7-rs.git"
+rev      = "d137971d63b9706b322dfce2bc93123258dd4c38"
 
 [dev-dependencies]
 criterion = "0.4.0"
-rand = "0.8.5"
+rand      = "0.8.5"
 
 [profile.release]
 debug = true
-
-[[bench]]
-name = "appender_benchmark"
-harness = false
