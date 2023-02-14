@@ -1,8 +1,6 @@
 use std::mem::size_of;
 
-use anyhow::{anyhow, ensure, Result};
-
-use crate::{formats::log::IndexFileHeader, util::BlockIODevice};
+use crate::{ensure, formats::log::IndexFileHeader, util::BlockIODevice, ErrorType, Result};
 
 pub(crate) struct IndexChecker<'a, F> {
     file: &'a mut F,
@@ -42,7 +40,7 @@ impl<'a, F: BlockIODevice> IndexChecker<'a, F> {
         self.file.read_at(0, &mut buf)?;
         (bincode::deserialize::<IndexFileHeader>(&buf)? == self.expected_header)
             .then_some(())
-            .ok_or(anyhow!("Invalid index file header"))
+            .ok_or(ErrorType::InvalidHeader)
     }
 
     // init header if file is empty

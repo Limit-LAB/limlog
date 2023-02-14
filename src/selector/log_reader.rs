@@ -1,8 +1,6 @@
 use std::io::SeekFrom;
 
-use anyhow::Result;
-
-use crate::{checker::LogChecker, util::BlockIODevice, Log};
+use crate::{checker::LogChecker, util::BlockIODevice, Log, Result};
 
 #[derive(Debug)]
 pub(crate) struct LogReader<F> {

@@ -1,6 +1,5 @@
 use std::{marker::PhantomData, mem::size_of, thread};
 
-use anyhow::Result;
 use bytes::{BufMut, BytesMut};
 use kanal::{unbounded, Receiver, Sender};
 use smallvec::SmallVec;
@@ -9,7 +8,7 @@ use crate::{
     checker::IndexChecker,
     formats::log::IndexFileHeader,
     util::{BlockIODevice, IndexItem},
-    STACK_BUF_SIZE,
+    Result, STACK_BUF_SIZE,
 };
 
 #[derive(Debug)]

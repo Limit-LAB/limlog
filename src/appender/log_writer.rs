@@ -6,7 +6,6 @@ use std::{
     thread,
 };
 
-use anyhow::Result;
 use bytes::{BufMut, BytesMut};
 use kanal::{unbounded, Receiver, Sender};
 use smallvec::SmallVec;
@@ -16,6 +15,7 @@ use crate::{
     checker::LogChecker,
     formats::log::{IdIndex, Log, LogFileHeader, TsIndex, INDEX_HEADER, TS_INDEX_HEADER},
     util::BlockIODevice,
+    Result,
 };
 
 #[derive(Debug)]

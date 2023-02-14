@@ -13,7 +13,10 @@ pub use formats::log::Log;
 pub use selector::{LogSelector, SelectRange, SelectResult};
 
 mod checker;
+mod error;
 mod util;
+
+pub use error::*;
 
 #[cfg(test)]
 mod tests;
