@@ -28,6 +28,7 @@ impl<F: BlockIODevice> LogReader<F> {
 
         for _ in 0..count {
             // deserialize a log per times
+            // FIXME: fail on the 100th time
             logs.push(bincode::deserialize_from(&mut self.file)?);
         }
 

@@ -1,45 +1,41 @@
-use std::{marker::PhantomData, mem::size_of};
-
 use anyhow::Result;
 use positioned_io::ReadAt;
+use uuid7::Uuid;
 
-use crate::{
-    checker::IndexChecker,
-    formats::log::IndexFileHeader,
-    util::{BlockIODevice, IndexItem},
-};
+use crate::{checker::IndexChecker, formats::log::UuidIndex, util::BlockIODevice};
 
+// Reader for UuidIndex
 #[derive(Debug)]
-pub(crate) struct IndexReader<F, I> {
+pub(crate) struct IndexReader<F> {
     file: F,
     start: u64,
     len: u64,
-    phantom: PhantomData<I>,
+    item_size: u64, // UuidIndex serialized size
 }
 
-impl<F, I> IndexReader<F, I>
-where
-    F: BlockIODevice,
-    I: IndexItem + PartialOrd,
-    [u8; size_of::<I>()]: Sized,
-{
-    pub(crate) fn new(mut file: F, expected_header: IndexFileHeader) -> Result<IndexReader<F, I>> {
+impl<F: BlockIODevice> IndexReader<F> {
+    pub(crate) fn new(mut file: F) -> Result<IndexReader<F>> {
         let mut file_size = file.len()?;
-        IndexChecker::check::<I>(&mut file, &mut file_size, expected_header).header()?;
+        let header = IndexChecker::check(&mut file, &mut file_size).header()?;
 
-        let start = size_of::<IndexFileHeader>() as u64;
+        let start = bincode::serialized_size(&header).expect("Serialization failed") as u64;
         let len = file_size - start;
 
         Ok(Self {
             file,
             start,
             len,
-            phantom: PhantomData,
+            item_size: bincode::serialized_size(&UuidIndex::default())
+                .expect("Serialization failed"),
         })
     }
 
-    // select by given index(eg. Timestamp, Id) on the file
-    pub(crate) fn select_range(&self, start: &I, end: &I) -> Result<Option<(I, u64)>> {
+    // select by given UUID then returns
+    pub(crate) fn select_range(
+        &self,
+        start: &Uuid,
+        end: &Uuid,
+    ) -> Result<Option<(UuidIndex, u64)>> {
         // TODO: cache
         let (left, _) = self.binary_search(start, PartialOrd::lt)?;
         let (_, right) = self.binary_search(end, PartialOrd::le)?;
@@ -47,16 +43,20 @@ where
         Ok((right > left).then_some((self.index_item(left)?, right - left)))
     }
 
-    fn binary_search(&self, target: &I, cmp: impl Fn(&I, &I) -> bool) -> Result<(u64, u64)> {
+    fn binary_search(
+        &self,
+        target: &Uuid,
+        cmp: impl Fn(&Uuid, &Uuid) -> bool,
+    ) -> Result<(u64, u64)> {
         let mut left = 0;
-        let mut right = self.len / size_of::<I>() as u64 - 1;
+        let mut right = self.len / self.item_size;
         let mut mid;
 
         while left < right {
             mid = left + (right - left) / 2;
-            let v: I = self.index_item(mid)?;
+            let v = self.index_item(mid)?;
 
-            if cmp(&v, target) {
+            if cmp(&v.uuid, target) {
                 left = mid + 1;
             } else if mid > 0 {
                 right = mid - 1;
@@ -72,15 +72,15 @@ where
     #[inline]
     fn index_to_offset(&self, index: u64) -> u64 {
         debug_assert!(
-            index < self.len / size_of::<I>() as u64,
+            index < self.len / self.item_size,
             "Index out of bounds: {index}"
         );
-        index * size_of::<I>() as u64 + self.start
+        index * self.item_size + self.start
     }
 
     // get index item by given "index"
     #[inline]
-    fn index_item(&self, index: u64) -> Result<I> {
+    fn index_item(&self, index: u64) -> Result<UuidIndex> {
         let cur = ReadAtCursor {
             file: &self.file,
             pos: self.index_to_offset(index),

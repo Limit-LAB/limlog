@@ -1,9 +1,7 @@
-use std::mem::size_of;
-
 use super::TestFile;
 use crate::{
     checker::{IndexChecker, LogChecker},
-    formats::log::{IdIndex, IndexFileHeader, LogFileHeader, INDEX_HEADER, TS_INDEX_HEADER},
+    formats::log::{IndexFileHeader, LogFileHeader},
     tests::log_format_test::{
         INDEX1, INDEX2, INDEX3, INDEX_FILE_HEADER, LOG1, LOG2, LOG3, LOG_FILE_HEADER,
     },
@@ -24,7 +22,10 @@ fn log_file_check() {
         .or_init()
         .unwrap();
     assert_eq!(header, LogFileHeader::default());
-    assert_eq!(log_len, size_of::<LogFileHeader>() as u64);
+    assert_eq!(
+        log_len,
+        bincode::serialized_size(&LogFileHeader::default()).unwrap()
+    );
     assert_eq!(
         log_file.get_buf(),
         bincode::serialize(&LogFileHeader::default()).unwrap()
@@ -65,10 +66,13 @@ fn idx_file_check() {
     // empty index file
     let mut idx_file = TestFile::new(Vec::new());
     let mut idx_len = idx_file.len().unwrap();
-    IndexChecker::check::<IdIndex>(&mut idx_file, &mut idx_len, INDEX_HEADER)
+    IndexChecker::check(&mut idx_file, &mut idx_len)
         .or_init()
         .unwrap();
-    assert_eq!(idx_len, size_of::<IndexFileHeader>() as u64);
+    assert_eq!(
+        idx_len,
+        bincode::serialized_size(&IndexFileHeader::default()).unwrap()
+    );
     assert_eq!(idx_file.get_buf(), INDEX_FILE_HEADER);
 
     // valid index file
@@ -80,7 +84,7 @@ fn idx_file_check() {
             .collect::<Vec<_>>(),
     );
     let mut idx_len = idx_file.len().unwrap();
-    IndexChecker::check::<IdIndex>(&mut idx_file, &mut idx_len, INDEX_HEADER)
+    IndexChecker::check(&mut idx_file, &mut idx_len)
         .header()
         .unwrap();
 
@@ -88,7 +92,7 @@ fn idx_file_check() {
     let mut idx_file = TestFile::new(idx_file.get_buf()[0..9].into());
     let mut idx_len = idx_file.len().unwrap();
     assert!(
-        IndexChecker::check::<IdIndex>(&mut idx_file, &mut idx_len, INDEX_HEADER)
+        IndexChecker::check(&mut idx_file, &mut idx_len)
             .header()
             .is_err()
     );
@@ -96,15 +100,7 @@ fn idx_file_check() {
     let mut idx_file = TestFile::new(idx_file.get_buf()[0..5].into());
     let mut idx_len = idx_file.len().unwrap();
     assert!(
-        IndexChecker::check::<IdIndex>(&mut idx_file, &mut idx_len, INDEX_HEADER)
-            .header()
-            .is_err()
-    );
-
-    let mut idx_file = TestFile::new(idx_file.get_buf());
-    let mut idx_len = idx_file.len().unwrap();
-    assert!(
-        IndexChecker::check::<IdIndex>(&mut idx_file, &mut idx_len, TS_INDEX_HEADER)
+        IndexChecker::check(&mut idx_file, &mut idx_len)
             .header()
             .is_err()
     );

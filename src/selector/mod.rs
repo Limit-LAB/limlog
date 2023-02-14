@@ -10,26 +10,35 @@ use std::{
 
 use anyhow::{ensure, Result};
 use kanal::{bounded, unbounded, Receiver, Sender};
+use uuid7::Uuid;
 
 use self::{index_reader::IndexReader, log_reader::LogReader};
 use crate::{
-    formats::log::{IdIndex, TsIndex, INDEX_HEADER, TS_INDEX_HEADER},
-    util::{log_groups, LogGroup},
+    util::{log_groups, ts_to_uuid},
     Log,
 };
 
 #[derive(Copy, Clone, Debug)]
 pub enum SelectRange {
     Timestamp(u64, u64),
-    Id(u64, u64),
+    Uuid(Uuid, Uuid),
+}
+
+impl SelectRange {
+    fn to_uuid_range(&self) -> (Uuid, Uuid) {
+        match *self {
+            SelectRange::Timestamp(start, end) => (ts_to_uuid(start, 0), ts_to_uuid(end, 0xFF)),
+            SelectRange::Uuid(start, end) => (start, end),
+        }
+    }
 }
 
 pub type SelectResult = Receiver<Vec<Log>>;
 
 #[derive(Clone, Debug)]
 pub struct LogSelector {
-    groups: Vec<LogGroup>,
-    sender: Sender<(Vec<LogGroup>, SelectRange, Sender<Vec<Log>>)>,
+    groups: Vec<Uuid>,
+    sender: Sender<(Vec<Uuid>, SelectRange, Sender<Vec<Log>>)>,
 }
 
 impl LogSelector {
@@ -38,10 +47,7 @@ impl LogSelector {
         let mut groups = log_groups(path.as_ref());
         ensure!(!groups.is_empty(), "Empty log directory");
         // for match the last log group
-        groups.push(LogGroup {
-            id: u64::MAX,
-            ts: u64::MAX,
-        });
+        groups.push(Uuid::MAX);
         groups.sort();
 
         let (sender, receiver) = unbounded();
@@ -58,22 +64,15 @@ impl LogSelector {
 
     /// Select range by log ID or log timestamp
     pub fn select_range(&self, range: SelectRange) -> Result<SelectResult> {
-        // find log group which is in the range
-        let range_groups = self.groups.windows(2);
-        let range_groups = match range {
-            SelectRange::Timestamp(start, end) => range_groups
-                .filter_map(|w| {
-                    let range = w[0].ts..w[1].ts;
-                    (range.contains(&start) || range.contains(&end)).then_some(w[0])
-                })
-                .collect::<Vec<_>>(),
-            SelectRange::Id(start, end) => range_groups
-                .filter_map(|w| {
-                    let range = w[0].id..w[1].id;
-                    (range.contains(&start) || range.contains(&end)).then_some(w[0])
-                })
-                .collect::<Vec<_>>(),
-        };
+        // find the log group that intersect with the range
+        let range_groups = self
+            .groups
+            .windows(2)
+            .filter_map(|w| {
+                let (start, end) = range.to_uuid_range();
+                (start <= w[1] && end >= w[0]).then_some(w[0])
+            })
+            .collect::<Vec<_>>();
 
         let (sender, receiver) = bounded(1);
 
@@ -92,15 +91,14 @@ impl LogSelector {
 #[derive(Debug)]
 struct LogSelectorInner {
     work_dir: PathBuf,
-    readers: BTreeMap<LogGroup, ReaderSet>,
-    receiver: Receiver<(Vec<LogGroup>, SelectRange, Sender<Vec<Log>>)>,
+    readers: BTreeMap<Uuid, ReaderSet>,
+    receiver: Receiver<(Vec<Uuid>, SelectRange, Sender<Vec<Log>>)>,
 }
 
 #[derive(Debug)]
 struct ReaderSet {
     log: LogReader<File>,
-    idx: IndexReader<File, IdIndex>,
-    ts_idx: IndexReader<File, TsIndex>,
+    idx: IndexReader<File>,
 }
 
 impl LogSelectorInner {
@@ -120,47 +118,36 @@ impl LogSelectorInner {
                 let set = match self.readers.get_mut(&group) {
                     Some(set) => set,
                     None => {
-                        let reader = self.create_reader_set(group)?;
+                        let reader = self.create_reader_set(&group).unwrap();
                         self.readers.entry(group).or_insert(reader)
                     }
                 };
 
-                let Some((start, count)) = (match range {
-                    SelectRange::Timestamp(start, end) => set
-                        .ts_idx
-                        .select_range(&TsIndex { ts: start, offset: 0 }, &TsIndex { ts: end, offset: 0 })?
-                        .map(|(ts_idx, count)| (ts_idx.ts, count)),
-                    SelectRange::Id(start, end) => set
+                let (start, end) = range.to_uuid_range();
+                let Some((begin, count)) = set
                         .idx
-                        .select_range(&IdIndex { id: start, offset: 0 }, &IdIndex { id: end, offset: 0 })?
-                        .map(|(idx, count)| (idx.id, count)),
-                }) else { continue };
+                        .select_range(&start, &end)?
+                        .map(|(idx, count)| (idx.offset, count))
+                 else { continue };
 
-                res.extend(set.log.select_logs(start, count)?);
+                res.extend(set.log.select_logs(begin, count).unwrap());
             }
 
-            sender.send(res)?;
+            sender.send(res).unwrap();
         }
 
         Ok(())
     }
 
     // Create new reader set if not exist
-    fn create_reader_set(&self, group: LogGroup) -> Result<ReaderSet> {
-        let file_name = format!("{}_{}", group.id, group.ts);
+    fn create_reader_set(&self, group: &Uuid) -> Result<ReaderSet> {
+        let file_name = group.to_string();
 
         Ok(ReaderSet {
             log: LogReader::new(File::open(
                 self.work_dir.join(format!("{file_name}.limlog")),
             )?)?,
-            idx: IndexReader::new(
-                File::open(self.work_dir.join(format!("{file_name}.idx")))?,
-                INDEX_HEADER,
-            )?,
-            ts_idx: IndexReader::new(
-                File::open(self.work_dir.join(format!("{file_name}.ts.idx")))?,
-                TS_INDEX_HEADER,
-            )?,
+            idx: IndexReader::new(File::open(self.work_dir.join(format!("{file_name}.idx")))?)?,
         })
     }
 }

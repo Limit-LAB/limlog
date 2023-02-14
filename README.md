@@ -5,12 +5,14 @@
 
 提供两种日志格式:
 
-1. `<start_id>_<start_ts>.limlog` `<start_id>_<start_ts>.idx` `<start_id>_<start_ts>.ts.idx` 用于存储顺序的消息
+1. `<start_uuid>.limlog` `<start_uuid>.idx` 用于存储顺序的消息
 2. TODO
 
 ## Files Format
 
-### .limlog
+### Log Format
+
+#### .limlog
 
 - header
 
@@ -24,14 +26,14 @@
 
 | Field         | Size              |
 | ------------- | ----------------- |
-| ts(Timestamp) | 8 bytes           |
-| id            | 8 bytes           |
+| __uuid_length | 8 bytes           |
+| uuid            | 16 bytes           |
 | __key_len     | 8 bytes           |
 | key           | __key_len bytes   |
 | __value_len   | 8 bytes           |
 | value         | __value_len bytes |
 
-### .idx
+#### .idx
 
 - header
 
@@ -41,22 +43,8 @@
 
 - index item
 
-| Field                 | Size    |
-| --------------------- | ------- |
-| __id                  | 8 bytes |
-| __offset (of .limlog) | 8 bytes |
-
-### .ts.idx
-
-- header
-
-| Field        | Size    |
-| ------------ | ------- |
-| magic_number | 8 bytes |
-
-- index item
-
-| Field                 | Size    |
-| --------------------- | ------- |
-| __ts                  | 8 bytes |
-| __offset (of .limlog) | 8 bytes |
+| Field               | Size     |
+| ------------------- | -------- |
+| __uuid_length       | 8 bytes  |
+| uuid                | 16 bytes |
+| offset (of .limlog) | 8 bytes  |

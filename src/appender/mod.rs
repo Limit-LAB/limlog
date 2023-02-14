@@ -9,6 +9,7 @@ use std::{
 
 use anyhow::{anyhow, ensure, Result};
 use crossbeam_queue::ArrayQueue;
+use uuid7::Uuid;
 
 use self::log_writer::LogWriter;
 use crate::{formats::log::Log, util::log_groups};
@@ -67,11 +68,11 @@ impl Builder {
 
         // open the latest log group if present
         let writer = find_latest_log_group(&self.work_dir)
-            .and_then(|(id, ts)| {
+            .and_then(|uuid| {
                 let writer = OnceLock::new();
-                let Ok(log_writer) = LogAppender::open_log_group(&self.work_dir, id, ts) else {
+                let Ok(log_writer) = LogAppender::open_log_group(&self.work_dir, &uuid) else {
                     // archive broken log group
-                    LogAppender::recover_log_group(&self.work_dir, id, ts).ok()?;
+                    LogAppender::archive_log_group(&self.work_dir, &uuid).ok()?;
                     return None;
                 };
                 writer.set(log_writer).ok()?;
@@ -131,7 +132,7 @@ impl LogAppender {
                 self.inner
                     .queue
                     .push(log)
-                    .map_err(|log| anyhow!("Insert {:?} failed", log))?;
+                    .expect("Failed to flush log");
             }
         }
 
@@ -153,36 +154,32 @@ impl LogAppender {
         if let Some(writer) = self.inner.writer.get() {
             if writer.file_size() >= self.inner.file_size_threshold {
                 // 神父换碟
-                _ = self
-                    .inner
-                    .writer
-                    .set(self.create_log_group(first.id, first.ts)?);
+                _ = self.inner.writer.set(self.create_log_group(&first.uuid)?);
             }
         }
 
         self.inner
             .writer
-            .get_or_try_init(|| self.create_log_group(first.id, first.ts))?
+            .get_or_try_init(|| self.create_log_group(&first.uuid))?
             .append_logs(logs)?;
 
         Ok(())
     }
 
     // open a exist log group
-    fn open_log_group(path: impl AsRef<Path>, id: u64, ts: u64) -> Result<LogWriter> {
+    fn open_log_group(path: impl AsRef<Path>, uuid: &Uuid) -> Result<LogWriter> {
         let mut binding = File::options();
-        let filename = format!("{id}_{ts}");
+        let filename = uuid.to_string();
         let options = binding.append(true).read(true);
 
         LogWriter::new(
             options.open(log_file_path!(path.as_ref(), filename, "limlog"))?,
             options.open(log_file_path!(path.as_ref(), filename, "idx"))?,
-            options.open(log_file_path!(path.as_ref(), filename, "ts.idx"))?,
         )
     }
 
-    fn recover_log_group(path: impl AsRef<Path>, id: u64, ts: u64) -> Result<()> {
-        let filename = format!("{id}_{ts}");
+    fn archive_log_group(path: impl AsRef<Path>, uuid: &Uuid) -> Result<()> {
+        let filename = uuid.to_string();
 
         fs::rename(
             log_file_path!(path.as_ref(), filename, "limlog"),
@@ -192,38 +189,33 @@ impl LogAppender {
             log_file_path!(path.as_ref(), filename, "idx"),
             log_file_path!(path.as_ref(), filename, "idx.old"),
         )?;
-        fs::rename(
-            log_file_path!(path.as_ref(), filename, "ts.idx"),
-            log_file_path!(path.as_ref(), filename, "ts.idx.old"),
-        )?;
 
         Ok(())
     }
 
     // create a brand new log group
-    fn create_log_group(&self, id: u64, ts: u64) -> Result<LogWriter> {
+    fn create_log_group(&self, uuid: &Uuid) -> Result<LogWriter> {
         let mut binding = File::options();
-        let filename = format!("{id}_{ts}");
+        let filename = uuid.to_string();
         let options = binding.append(true).create_new(true).read(true);
 
         LogWriter::new(
             options.open(log_file_path!(self.inner.work_dir, filename, "limlog"))?,
             options.open(log_file_path!(self.inner.work_dir, filename, "idx"))?,
-            options.open(log_file_path!(self.inner.work_dir, filename, "ts.idx"))?,
         )
     }
 }
 
-fn find_latest_log_group(log_dir: impl AsRef<Path>) -> Option<(u64, u64)> {
+fn find_latest_log_group(log_dir: impl AsRef<Path>) -> Option<Uuid> {
     let log_groups = log_groups(log_dir);
     let mut latest = *log_groups.first()?;
 
     // FIXME: last modified conflicts with ts in the filename
-    for entry in log_groups {
-        if entry.ts < latest.ts {
-            latest = entry;
+    for uuid in log_groups {
+        if uuid < latest {
+            latest = uuid;
         }
     }
 
-    Some((latest.id, latest.ts))
+    Some(latest)
 }

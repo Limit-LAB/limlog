@@ -1,5 +1,4 @@
 #![feature(once_cell)]
-#![feature(trait_alias)]
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 

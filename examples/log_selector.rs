@@ -1,25 +1,23 @@
-use std::fs;
+use std::{fs, time::{SystemTime, UNIX_EPOCH}};
 
 use limlog::selector::{LogSelector, SelectRange};
-use rand::Rng;
 
 fn main() {
     _ = fs::create_dir(".logs");
 
-    let mut rng = rand::thread_rng();
-
     let selector = LogSelector::new(".logs").unwrap();
+    let now_ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
     let mut results = Vec::new();
-    for _ in 0..1000 {
-        let start = rng.gen_range(0..500);
+    //for _ in 0..100 {
         results.push(
             selector
-                .select_range(SelectRange::Timestamp(start, start + 5))
+                .select_range(SelectRange::Timestamp(0, now_ts))
                 .unwrap(),
         );
-    }
+    //}
 
     for res in results {
-        _ = res.recv().unwrap().is_empty();
+        let len = res.recv().unwrap().len();
+        println!("{len}");
     }
 }
