@@ -1,12 +1,12 @@
 use std::{marker::PhantomData, mem::size_of};
 
-use anyhow::Result;
 use positioned_io::ReadAt;
 
 use crate::{
     checker::IndexChecker,
     formats::log::IndexFileHeader,
     util::{BlockIODevice, IndexItem},
+    Result,
 };
 
 #[derive(Debug)]

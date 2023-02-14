@@ -1,8 +1,6 @@
 use std::mem::size_of;
 
-use anyhow::{ensure, Result};
-
-use crate::{formats::log::LogFileHeader, util::BlockIODevice};
+use crate::{ensure, formats::log::LogFileHeader, util::BlockIODevice, Result};
 
 pub(crate) struct LogChecker<'a, F> {
     file: &'a mut F,

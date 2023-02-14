@@ -2,21 +2,22 @@ mod index_writer;
 pub(crate) mod log_writer;
 
 use std::{
+    fmt::Debug,
     fs::{self, File},
+    num::NonZeroUsize,
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
 };
 
-use anyhow::{anyhow, ensure, Result};
 use crossbeam_queue::ArrayQueue;
 
 use self::log_writer::LogWriter;
-use crate::{formats::log::Log, util::log_groups};
+use crate::{ensure, formats::log::Log, util::log_groups, ErrorType, Result};
 
 #[derive(Debug)]
 pub struct Builder {
     work_dir: PathBuf,
-    queue_size: usize,
+    queue_size: NonZeroUsize,
     flush_percent: f32,
     file_size_threshold: u64,
 }
@@ -26,15 +27,21 @@ impl Builder {
     pub fn new(path: impl AsRef<Path>) -> Builder {
         Self {
             work_dir: path.as_ref().to_path_buf(),
-            queue_size: 128,
+            queue_size: 128.try_into().unwrap(),
             flush_percent: 0.2,                     // 20%
             file_size_threshold: 500 * 1024 * 1024, // 500 MiB
         }
     }
 
     /// Set the buffer queue size, default is 128.
-    pub fn queue_size(mut self, queue_size: usize) -> Builder {
-        self.queue_size = queue_size;
+    pub fn queue_size<T>(mut self, queue_size: T) -> Builder
+    where
+        T: TryInto<NonZeroUsize>,
+        T::Error: Debug,
+    {
+        self.queue_size = queue_size
+            .try_into()
+            .expect("Queue size must be greater than zero");
         self
     }
 
@@ -42,7 +49,15 @@ impl Builder {
     ///
     /// A new log file will be created when the log file size exceeds the
     /// threshold. default is 500 MiB.
+    ///
+    /// # Panic
+    ///
+    /// Panics if the threshold is less than 128.
     pub fn file_size_threshold(mut self, file_size_threshold: u64) -> Builder {
+        assert!(
+            file_size_threshold >= 128,
+            "File max size must be greater than or equal to 128 bytes"
+        );
         self.file_size_threshold = file_size_threshold;
         self
     }
@@ -58,12 +73,11 @@ impl Builder {
 
     /// Build a [LogAppender].
     pub fn build(self) -> Result<LogAppender> {
-        ensure!(self.work_dir.is_dir(), "Path must be a directory");
-        ensure!(self.queue_size > 0, "Queue size must be greater than zero");
-        ensure!(
-            self.file_size_threshold > 128,
-            "File max size must be greater than 128 bytes"
-        );
+        if !self.work_dir.exists() {
+            fs::create_dir_all(&self.work_dir)?;
+        } else if !self.work_dir.is_dir() {
+            return Err(ErrorType::BadWorkDir(self.work_dir.clone()));
+        }
 
         // open the latest log group if present
         let writer = find_latest_log_group(&self.work_dir)
@@ -83,8 +97,8 @@ impl Builder {
             inner: Arc::new(LogAppenderInner {
                 writer,
                 work_dir: self.work_dir,
-                queue: ArrayQueue::new(self.queue_size),
-                flush_len: (self.queue_size as f32 * self.flush_percent) as _,
+                queue: ArrayQueue::new(self.queue_size.into()),
+                flush_len: (self.queue_size.get() as f32 * self.flush_percent) as _,
                 file_size_threshold: self.file_size_threshold,
             }),
         })
@@ -128,10 +142,7 @@ impl LogAppender {
         for log in batch {
             if let Err(log) = self.inner.queue.push(log) {
                 self.flush()?;
-                self.inner
-                    .queue
-                    .push(log)
-                    .map_err(|log| anyhow!("Insert {:?} failed", log))?;
+                self.inner.queue.push(log).expect("Queue is full")
             }
         }
 
