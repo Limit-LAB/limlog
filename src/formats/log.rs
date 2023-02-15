@@ -7,7 +7,9 @@ macro_rules! impl_from_bytes {
             type Error = bincode::Error;
 
             fn try_from(bytes: &[u8]) -> std::result::Result<Self, Self::Error> {
-                bincode::deserialize(bytes)
+                use bincode::Options;
+
+                $crate::bincode_option().deserialize(bytes)
             }
         }
     };

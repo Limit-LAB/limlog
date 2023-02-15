@@ -1,6 +1,9 @@
+use bincode::Options;
+use uuid7::Uuid;
+
 use crate::{
     formats::log::{IndexFileHeader, Log, LogFileHeader, UuidIndex, INDEX_HEADER},
-    util::to_uuid,
+    util::{bincode_option, to_uuid}, consts::MIN_LOG_SIZE,
 };
 
 pub(crate) const LOG1: [u8; 34] = [
@@ -122,4 +125,27 @@ fn test_log_format() {
         idx3
     );
     assert_eq!(INDEX_HEADER, idx_h);
+}
+
+#[test]
+fn test_ser() {
+    let l1 = Log {
+        uuid: Uuid::MAX,
+        key: vec![1, 1, 4, 5, 1, 4],
+        value: vec![1, 1, 1, 1, 1, 1, 1, 1],
+    };
+    let opt = bincode_option();
+    let len = opt.serialized_size(&l1).unwrap() as usize;
+    let mut vec = vec![0u8; len];
+    opt.serialize_into(&mut vec[..], &l1).unwrap();
+
+    eprintln!("Log bytes: {vec:?}");
+
+    let l2 = opt.deserialize(&vec).unwrap();
+
+    assert_eq!(l1, l2);
+
+    let min_size = opt.serialized_size(&Log::default()).unwrap();
+    eprintln!("Min log size: {min_size}");
+    assert_eq!(min_size, MIN_LOG_SIZE as _);
 }
