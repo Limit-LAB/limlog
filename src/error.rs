@@ -14,9 +14,6 @@ pub enum ErrorType {
     #[error("Bincode error: {0}")]
     Serialize(#[from] bincode::Error),
 
-    #[error("Error: {0}")]
-    AdHoc(String),
-
     #[error("Invalid file header")]
     InvalidHeader,
 
@@ -28,22 +25,3 @@ pub enum ErrorType {
 }
 
 pub type Result<T> = std::result::Result<T, ErrorType>;
-
-macro_rules! ensure {
-    ($pred:expr) => {
-        if !$pred {
-            return Err($crate::ErrorType::AdHoc(format!(
-                "Assertion failed: {}",
-                stringify!($pred)
-            )));
-        }
-    };
-
-    ($pred:expr, $($msg:tt)*) => {
-        if !$pred {
-            return Err($crate::ErrorType::AdHoc(format!($($msg)*)));
-        }
-    };
-}
-
-pub(crate) use ensure;

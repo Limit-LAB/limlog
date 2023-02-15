@@ -29,7 +29,7 @@ impl ToTime for Uuid {
 }
 
 #[inline]
-pub(crate) fn ts_to_uuid(ts: u64, fill: u8) -> Uuid {
+pub(crate) fn to_uuid(ts: u64, fill: u8) -> Uuid {
     let mut uuid = [fill; 16];
     (&mut uuid[..6]).copy_from_slice(&ts.to_be_bytes()[2..8]);
     Uuid::from(uuid)

@@ -1,6 +1,6 @@
 use crate::{
     formats::log::{IndexFileHeader, Log, LogFileHeader, UuidIndex, INDEX_HEADER},
-    util::ts_to_uuid,
+    util::to_uuid,
 };
 
 pub(crate) const LOG1: [u8; 34] = [
@@ -68,7 +68,7 @@ fn test_log_format() {
 
     assert_eq!(
         Log {
-            uuid: ts_to_uuid(1, 0),
+            uuid: to_uuid(1, 0),
             key: vec![1],
             value: vec![10]
         },
@@ -76,7 +76,7 @@ fn test_log_format() {
     );
     assert_eq!(
         Log {
-            uuid: ts_to_uuid(2, 0),
+            uuid: to_uuid(2, 0),
             key: vec![2],
             value: vec![11]
         },
@@ -84,7 +84,7 @@ fn test_log_format() {
     );
     assert_eq!(
         Log {
-            uuid: ts_to_uuid(3, 0),
+            uuid: to_uuid(3, 0),
             key: vec![3],
             value: vec![12]
         },
@@ -102,21 +102,21 @@ fn test_log_format() {
 
     assert_eq!(
         UuidIndex {
-            uuid: ts_to_uuid(1, 0),
+            uuid: to_uuid(1, 0),
             offset: 24
         },
         idx1
     );
     assert_eq!(
         UuidIndex {
-            uuid: ts_to_uuid(2, 0),
+            uuid: to_uuid(2, 0),
             offset: 58
         },
         idx2
     );
     assert_eq!(
         UuidIndex {
-            uuid: ts_to_uuid(3, 0),
+            uuid: to_uuid(3, 0),
             offset: 92
         },
         idx3
