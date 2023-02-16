@@ -34,12 +34,14 @@ impl Map {
         &self.file
     }
 
-    unsafe fn as_slice(&self) -> &[u8] {
+    fn as_slice(&self) -> &[u8] {
         // SAFETY: File held by self is locked and mmap is not modified until self is
         // dropped
         unsafe { std::slice::from_raw_parts(self.raw.as_ptr(), self.raw.len()) }
     }
 
+    /// # Safety
+    /// Caller must ensure that access to the slice is exclusive
     unsafe fn as_slice_mut(&mut self) -> &mut [u8] {
         // SAFETY: File held by self is locked and mmap is not modified until self is
         // dropped
