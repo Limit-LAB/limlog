@@ -12,7 +12,7 @@ pub enum ErrorType {
     KanalSend(#[from] kanal::SendError),
 
     #[error("Bincode error: {0}")]
-    Serialize(#[from] bincode::Error),
+    Bincode(#[from] bincode::Error),
 
     #[error("Invalid file header")]
     InvalidHeader,

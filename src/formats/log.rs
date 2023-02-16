@@ -49,3 +49,15 @@ pub(crate) struct UuidIndex {
 
 impl_from_bytes!(UuidIndex);
 impl_from_bytes!(IndexFileHeader);
+
+#[test]
+fn test_min_log_size() {
+    let min = Log {
+        uuid: Uuid::default(),
+        key: vec![],
+        value: vec![],
+    };
+
+    let min_size = bincode::serialized_size(&min).unwrap();
+    println!("min_size: {}", min_size);
+}

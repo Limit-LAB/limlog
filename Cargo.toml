@@ -4,18 +4,21 @@ version = "0.2.0"
 edition = "2021"
 
 [dependencies]
-anyhow          = "1"
-bincode         = "1.3"
-bitflags        = "1.3"
-bytes           = "1.4"
-crossbeam-queue = "0.3"
-memmap2         = "0.5.8"
-thiserror       = "1.0"
+anyhow           = "1"
+bincode          = "1.3"
+bitflags         = "1.3"
+bytes            = "1.4"
+event-listener   = "2.5.3"
+fs2              = "0.4.3"
+memmap2          = "0.5.8"
+parking_lot      = "0.12.1"
+pin-project-lite = "0.2.9"
+thiserror        = "1.0"
 
 serde    = { version = "1", features = ["derive"] }
-kanal    = { version = "0.1.0-pre8", default-features = false }
+kanal    = { version = "0.1.0-pre8", default-features = false, features = ["async"] }
 smallvec = { version = "1.10", features = ["union", "const_new", "const_generics", "specialization"] }
-parking_lot = "0.12.1"
+futures  = { version = "0.3.26", default-features = false }
 
 [dependencies.uuid7]
 version  = "0.3.4"
@@ -26,6 +29,8 @@ rev      = "d137971d63b9706b322dfce2bc93123258dd4c38"
 [dev-dependencies]
 criterion = "0.4.0"
 rand      = "0.8.5"
+tempdir   = "0.3.7"
+tokio     = { version = "1.25.0", features = ["full"] }
 
 [profile.release]
 debug = true
