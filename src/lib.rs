@@ -1,12 +1,6 @@
 // Features
-#![feature(once_cell)]
-#![feature(trait_alias)]
 #![feature(io_error_more)]
 #![feature(type_alias_impl_trait)]
-// POC
-#![allow(dead_code)]
-#![allow(unused_imports)]
-#![allow(unused_variables)]
 
 pub mod consts;
 pub mod formats;
@@ -20,23 +14,15 @@ mod util;
 mod tests;
 
 use std::{
-    collections::HashMap,
-    fs::File,
     io::{Error as IoError, ErrorKind as IoErrorKind},
-    marker::PhantomData,
-    ops::{Index, RangeBounds},
     path::Path,
     pin::Pin,
-    slice::SliceIndex,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+    sync::Arc,
     task::{Context, Poll},
 };
 
 use bincode::Options;
-use event_listener::{Event, EventListener};
+use event_listener::EventListener;
 use futures::{ready, Future, Stream};
 
 use crate::{
@@ -50,22 +36,23 @@ use crate::{
 pub struct Appender {
     inner: Arc<Shared>,
     idx: IndexMap,
-    recv: kanal::Receiver<Log>,
+    recv: kanal::AsyncReceiver<Log>,
 }
 
 impl Appender {
-    fn start_append(self) -> Result<()> {
+    async fn start_append(self) -> Result<()> {
         let opt: BincodeOptions = bincode_option();
-        while let Ok(log) = self.recv.recv() {
-            let offset = self.inner.offset();
-            let len = opt.serialized_size(&log)?;
-            if (self.inner.remaining() as u64) < len {
+
+        while let Ok(log) = self.recv.recv().await {
+            let _offset = self.inner.offset();
+            let len = opt.serialized_size(&log)? as usize;
+            if self.inner.remaining() < len {
                 break;
             }
             // SAFETY: We are the only one accessing the mutable portion of mmap
-            let mut buf = unsafe { self.inner.mut_slice() };
-            opt.serialize_into(&mut buf, &Some(log))?;
-            self.inner.flush(len as usize)?;
+            let buf = unsafe { self.inner.mut_slice() };
+            opt.serialize_into(&mut buf[..len], &log)?;
+            self.inner.flush(len)?;
         }
         Ok(())
     }
@@ -73,7 +60,7 @@ impl Appender {
 
 pub struct Topic {
     appender: Appender,
-    send: kanal::Sender<Log>,
+    send: kanal::AsyncSender<Log>,
 }
 
 impl Topic {
@@ -92,7 +79,7 @@ impl Topic {
 
         let inner = Arc::new(Shared::new(logs, topic));
 
-        let (send, recv) = kanal::bounded(1 << 8);
+        let (send, recv) = kanal::bounded_async(1 << 8);
         let appender = Appender { inner, idx, recv };
 
         Ok(Self { send, appender })
@@ -105,21 +92,22 @@ impl Topic {
     }
 
     pub fn reader(&self) -> Reader {
-        let read_to = self.appender.inner.offset();
+        let inner = self.appender.inner.clone();
+
         Reader {
-            read_to,
-            inner: self.appender.inner.clone(),
-            notify: self.appender.inner.subscribe(),
+            read_to: inner.offset(),
+            notify: inner.subscribe(),
+            inner,
         }
     }
 
     async fn start_append(self) -> Result<()> {
-        self.appender.start_append()
+        self.appender.start_append().await
     }
 }
 
 pub struct Writer {
-    send: kanal::Sender<Log>,
+    send: kanal::AsyncSender<Log>,
 }
 
 pin_project_lite::pin_project! {
@@ -146,27 +134,22 @@ impl Stream for Reader {
         let (inner, mut notify) = (this.inner, this.notify);
 
         loop {
-            ready!(notify.as_mut().poll(cx));
-
-            // Event emitted but has no new logs
             if inner.offset() - *this.read_to < MIN_LOG_SIZE {
-                return Poll::Ready(None);
+                std::mem::replace(&mut *notify, inner.subscribe()).discard();
+                ready!(notify.as_mut().poll(cx));
             }
-
-            notify.set(inner.subscribe());
 
             let slice = inner.ref_slice(*this.read_to);
 
-            match try_decode::<Log>(&slice, Some(bincode_option())) {
+            match try_decode::<Log>(&slice) {
                 Ok(Some((log, read))) => {
                     *this.read_to += read as usize;
                     return Poll::Ready(Some(Ok(log)));
                 }
                 Err(e) => return Poll::Ready(Some(Err(ErrorType::Bincode(e)))),
                 Ok(None) => {
-                    // Not ready yet, let the new EventListener to be polled
-                    // again
-                    continue;
+                    std::mem::replace(&mut *notify, inner.subscribe()).discard();
+                    ready!(notify.as_mut().poll(cx));
                 }
             }
         }

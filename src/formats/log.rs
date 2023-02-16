@@ -7,7 +7,9 @@ macro_rules! impl_from_bytes {
             type Error = bincode::Error;
 
             fn try_from(bytes: &[u8]) -> std::result::Result<Self, Self::Error> {
-                bincode::deserialize(bytes)
+                use bincode::Options;
+
+                $crate::bincode_option().deserialize(bytes)
             }
         }
     };
@@ -52,12 +54,16 @@ impl_from_bytes!(IndexFileHeader);
 
 #[test]
 fn test_min_log_size() {
+    use bincode::Options;
+
+    use crate::bincode_option;
+
     let min = Log {
         uuid: Uuid::default(),
         key: vec![],
         value: vec![],
     };
 
-    let min_size = bincode::serialized_size(&min).unwrap();
-    println!("min_size: {}", min_size);
+    let min_size = bincode_option().serialized_size(&min).unwrap();
+    println!("min_size: {min_size}");
 }

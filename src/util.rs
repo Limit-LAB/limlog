@@ -8,7 +8,7 @@ use std::{
 
 use bincode::Options;
 use bytes::Buf;
-use serde::{de::DeserializeOwned, Deserialize};
+use serde::{de::DeserializeOwned};
 use uuid7::Uuid;
 
 pub(crate) trait ToTime {
@@ -28,7 +28,7 @@ impl ToTime for Uuid {
     #[inline]
     fn to_ts(&self) -> u64 {
         let mut bytes = [0; 8];
-        (&mut bytes[2..]).copy_from_slice(&self.as_bytes()[..6]);
+        bytes[2..].copy_from_slice(&self.as_bytes()[..6]);
         u64::from_be_bytes(bytes)
     }
 }
@@ -36,7 +36,7 @@ impl ToTime for Uuid {
 #[inline]
 pub(crate) fn to_uuid(ts: u64, fill: u8) -> Uuid {
     let mut uuid = [fill; 16];
-    (&mut uuid[..6]).copy_from_slice(&ts.to_be_bytes()[2..8]);
+    uuid[..6].copy_from_slice(&ts.to_be_bytes()[2..8]);
     Uuid::from(uuid)
 }
 
@@ -73,7 +73,9 @@ mod bincode_option_mod {
     #[inline(always)]
     pub fn bincode_option() -> BincodeOptions {
         DefaultOptions::new()
-            .reject_trailing_bytes()
+            .with_fixint_encoding()
+            .with_big_endian()
+            // .reject_trailing_bytes()
             .with_limit(1 << 12)
     }
 }
@@ -81,18 +83,14 @@ pub use bincode_option_mod::{bincode_option, BincodeOptions};
 
 pub fn try_decode<T: DeserializeOwned + Debug>(
     data: &impl Buf,
-    option: Option<impl Options>,
 ) -> Result<Option<(T, u64)>, bincode::Error> {
     if data.chunk().is_empty() {
         return Ok(None);
     }
+
     let mut cur = Cursor::new(data.chunk());
 
-    let res = if let Some(option) = option {
-        option.deserialize_from(&mut cur)
-    } else {
-        bincode::deserialize_from(&mut cur)
-    };
+    let res = bincode_option().deserialize_from(&mut cur);
 
     match res {
         Ok(val) => Ok(Some((val, cur.position() as _))),

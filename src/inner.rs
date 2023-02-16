@@ -7,14 +7,9 @@ use std::{
 
 use event_listener::{Event, EventListener};
 use fs2::FileExt;
-use futures::Stream;
-use memmap2::{Advice, MmapOptions, MmapRaw};
-use parking_lot::Mutex;
-use serde::Deserialize;
+use memmap2::{MmapOptions, MmapRaw};
 
-use crate::{error::Result, formats::log::Log};
-
-const STACK_BUF_SIZE: usize = 256;
+use crate::error::Result;
 
 /// A wrapper for [`MmapRaw`]
 struct Map {
@@ -23,9 +18,14 @@ struct Map {
 }
 
 impl Map {
-    pub(crate) fn new(path: &Path) -> Result<Self> {
-        let file = File::open(path)?;
+    pub(crate) fn new(path: &Path, size: u64) -> Result<Self> {
+        let file = File::options()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(path)?;
         file.try_lock_exclusive()?;
+        file.set_len(size)?;
         let raw = MmapOptions::new().map_raw(&file)?;
         Ok(Self { raw, file })
     }
@@ -48,6 +48,14 @@ impl Map {
         unsafe { std::slice::from_raw_parts_mut(self.raw.as_mut_ptr(), self.raw.len()) }
     }
 }
+
+impl Drop for Map {
+    fn drop(&mut self) {
+        self.raw.flush().unwrap();
+        self.file.unlock().unwrap();
+        self.file.set_len(self.raw.len() as u64).unwrap();
+    }
+}
 /// Shared map for writing logs
 pub struct LogsMap {
     map: Map,
@@ -59,17 +67,19 @@ impl LogsMap {
         let mut p = dir.join(topic);
         p.set_extension("limlog");
 
-        let map = Map::new(&p)?;
+        let map = Map::new(&p, 1 << 24)?;
         let offset = AtomicUsize::new(0); // TODO: use len in file header
 
         Ok(Self { map, offset })
     }
 
     /// Load the offset
+    #[inline(always)]
     pub fn offset(&self) -> usize {
         self.offset.load(Ordering::SeqCst)
     }
 
+    #[inline(always)]
     pub(crate) fn commit(&self, len: usize) -> usize {
         self.offset.fetch_add(len, Ordering::SeqCst) + len
     }
@@ -98,7 +108,7 @@ impl LogsMap {
         half
     }
 
-    unsafe fn read_half(&self) -> &[u8] {
+    fn read_half(&self) -> &[u8] {
         // SAFETY: Only chunks greater than offset are written to
         let (half, _) = unsafe { self.split_to(self.offset()) };
         half
@@ -123,7 +133,7 @@ impl IndexMap {
         let mut p = dir.join(topic);
         p.set_extension("idx");
 
-        let map = Map::new(&p)?;
+        let map = Map::new(&p, 1 << 14)?;
 
         Ok(Self { map })
     }
@@ -136,6 +146,7 @@ pub struct Shared {
 }
 
 impl Shared {
+    #[inline]
     pub(crate) fn new(logs: LogsMap, topic: String) -> Self {
         Self {
             logs,
@@ -144,23 +155,23 @@ impl Shared {
         }
     }
 
+    #[inline]
     pub(crate) fn topic(&self) -> &str {
         &self.topic
     }
 
+    #[inline]
     pub(crate) fn subscribe(&self) -> EventListener {
         self.event.listen()
     }
 
+    #[inline(always)]
     pub(crate) fn offset(&self) -> usize {
         self.logs.offset()
     }
 
-    pub(crate) unsafe fn writer(&self) -> Writer<'_> {
-        Writer { shared: self }
-    }
-
     /// Index the underlying map
+    #[inline]
     pub unsafe fn index<I>(&self, index: I) -> &I::Output
     where
         I: SliceIndex<[u8]>,
@@ -168,16 +179,19 @@ impl Shared {
         self.logs.index(index)
     }
 
+    #[inline]
     pub(crate) unsafe fn mut_slice(&self) -> &mut [u8] {
         self.logs.write_half()
     }
 
     pub(crate) fn flush(&self, len: usize) -> Result<()> {
-        self.logs.map.raw.flush_async()?;
+        self.logs.map.raw.flush()?;
         self.logs.commit(len);
+        self.event.notify_additional(10);
         Ok(())
     }
 
+    #[inline]
     pub(crate) fn ref_slice(&self, from: usize) -> &[u8] {
         let offset = self.offset();
         debug_assert!(from <= offset);
@@ -186,11 +200,34 @@ impl Shared {
         unsafe { self.index(from..offset) }
     }
 
+    #[inline]
     pub fn remaining(&self) -> usize {
         self.logs.map.raw.len() - self.offset()
     }
 }
 
-pub struct Writer<'a> {
-    shared: &'a Shared,
+#[test]
+fn test_map() {
+    use bincode::Options;
+    use uuid7::Uuid;
+
+    use crate::{bincode_option, Log};
+
+    let dir = tempfile::tempdir().unwrap();
+    let map = LogsMap::new("123", dir.path()).unwrap();
+
+    let (r, w) = unsafe { map.split_to(10) };
+
+    assert_eq!(r.len(), 10);
+    println!("{:?}", &w[..100]);
+
+    let l = Log {
+        uuid: Uuid::MAX,
+        key: vec![114],
+        value: vec![191],
+    };
+
+    bincode_option().serialize_into(&mut w[..], &l).unwrap();
+
+    println!("{:?}", &w[..100]);
 }

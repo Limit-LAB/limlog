@@ -4,14 +4,11 @@ version = "0.2.0"
 edition = "2021"
 
 [dependencies]
-anyhow           = "1"
 bincode          = "1.3"
-bitflags         = "1.3"
 bytes            = "1.4"
 event-listener   = "2.5.3"
 fs2              = "0.4.3"
 memmap2          = "0.5.8"
-parking_lot      = "0.12.1"
 pin-project-lite = "0.2.9"
 thiserror        = "1.0"
 
@@ -27,10 +24,12 @@ git      = "https://github.com/George-Miao/uuid7-rs.git"
 rev      = "d137971d63b9706b322dfce2bc93123258dd4c38"
 
 [dev-dependencies]
-criterion = "0.4.0"
-rand      = "0.8.5"
-tempdir   = "0.3.7"
-tokio     = { version = "1.25.0", features = ["full"] }
+futures-executor = { version = "0.3.26", features = ["thread-pool"] }
+
+criterion    = "0.4.0"
+futures-time = "3.0.0"
+rand         = "0.8.5"
+tempfile     = "3.3.0"
 
 [profile.release]
 debug = true
