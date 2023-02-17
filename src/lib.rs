@@ -8,12 +8,14 @@ pub mod formats;
 mod error;
 mod gc;
 mod inner;
+mod raw;
 mod util;
 
 #[cfg(test)]
 mod tests;
 
 use std::{
+    future::IntoFuture,
     io::{Error as IoError, ErrorKind as IoErrorKind},
     path::Path,
     pin::Pin,
@@ -24,7 +26,6 @@ use std::{
 use bincode::Options;
 use event_listener::EventListener;
 use futures::{ready, Future, Stream};
-use uuid7::Uuid;
 
 use crate::{
     consts::MIN_LOG_SIZE,
@@ -34,7 +35,11 @@ use crate::{
     util::{bincode_option, try_decode, BincodeOptions},
 };
 
-struct Appender {
+/// The long-live future which the appender start to receive logs and append to
+/// the mmap. This should normally be spawned as a task.
+pub type Appending = impl Future<Output = Result<()>>;
+
+pub struct Appender {
     inner: Arc<Shared>,
     idx: IndexMap,
     recv: kanal::AsyncReceiver<Log>,
@@ -65,7 +70,7 @@ pub struct Topic {
 }
 
 impl Topic {
-    fn new(topic: impl Into<String>, dir: impl AsRef<Path>) -> Result<Self> {
+    pub fn new(topic: impl Into<String>, dir: impl AsRef<Path>) -> Result<Self> {
         let dir = dir.as_ref();
         if !dir.is_dir() {
             return Err(ErrorType::Io(IoError::new(
@@ -80,7 +85,7 @@ impl Topic {
 
         let inner = Arc::new(Shared::new(logs, topic));
 
-        let (send, recv) = kanal::bounded_async(1 << 8);
+        let (send, recv) = kanal::bounded_async(1 << 4);
         let appender = Appender { inner, idx, recv };
 
         Ok(Self { send, appender })
@@ -96,21 +101,40 @@ impl Topic {
         let inner = self.appender.inner.clone();
 
         Reader {
-            read_to: inner.offset(),
+            read_at: inner.offset(),
             notify: inner.subscribe(),
             inner,
         }
     }
 
-    pub fn reader_from(&self, from: &Uuid) -> Reader {
-        todo!()
-    }
+    pub fn reader_at(&self, read_at: usize) -> Result<Reader> {
+        let inner = self.appender.inner.clone();
+        let offset = inner.offset();
+        if read_at > offset {
+            return Err(ErrorType::InvalidOffset {
+                maximum: offset,
+                got: read_at,
+            });
+        }
 
-    async fn start_append(self) -> Result<()> {
-        self.appender.start_append().await
+        Ok(Reader {
+            read_at,
+            notify: inner.subscribe(),
+            inner,
+        })
     }
 }
 
+impl IntoFuture for Topic {
+    type IntoFuture = Appending;
+    type Output = Result<()>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        self.appender.start_append()
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Writer {
     send: kanal::AsyncSender<Log>,
 }
@@ -119,7 +143,7 @@ pin_project_lite::pin_project! {
     pub struct Reader {
         #[pin]
         notify: EventListener,
-        read_to: usize,
+        read_at: usize,
         inner: Arc<Shared>,
     }
 }
@@ -127,7 +151,7 @@ pin_project_lite::pin_project! {
 impl Reader {
     pub fn as_slice(&self) -> &[u8] {
         // SAFETY: memory before `offset` are immutable and ready to be read
-        unsafe { self.inner.index(self.read_to..self.inner.offset()) }
+        unsafe { self.inner.index(self.read_at..self.inner.offset()) }
     }
 }
 
@@ -139,16 +163,16 @@ impl Stream for Reader {
         let (inner, mut notify) = (this.inner, this.notify);
 
         loop {
-            if inner.offset() - *this.read_to < MIN_LOG_SIZE {
+            if inner.offset() - *this.read_at < MIN_LOG_SIZE {
                 std::mem::replace(&mut *notify, inner.subscribe()).discard();
                 ready!(notify.as_mut().poll(cx));
             }
 
-            let slice = inner.ref_slice(*this.read_to);
+            let slice = inner.ref_slice(*this.read_at);
 
             match try_decode::<Log>(&slice) {
                 Ok(Some((log, read))) => {
-                    *this.read_to += read as usize;
+                    *this.read_at += read as usize;
                     return Poll::Ready(Some(Ok(log)));
                 }
                 Err(e) => return Poll::Ready(Some(Err(ErrorType::Bincode(e)))),

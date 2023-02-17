@@ -1,27 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid7::Uuid;
 
-macro_rules! impl_from_bytes {
-    ($class:ty) => {
-        impl TryFrom<&[u8]> for $class {
-            type Error = bincode::Error;
-
-            fn try_from(bytes: &[u8]) -> std::result::Result<Self, Self::Error> {
-                use bincode::Options;
-
-                $crate::bincode_option().deserialize(bytes)
-            }
-        }
-    };
-}
-
-#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
-pub(crate) struct LogFileHeader {
-    pub magic_number: u64,
-    pub attributes: u64,
-    pub entry_count: u64,
-    // LOGS
-}
+use crate::consts::{INDEX_MAGIC, LOG_MAGIC};
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
 pub struct Log {
@@ -31,15 +11,37 @@ pub struct Log {
     pub value: Vec<u8>,
 }
 
-impl_from_bytes!(Log);
-impl_from_bytes!(LogFileHeader);
+#[repr(C, align(8))]
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct Header {
+    pub magic_number: [u8; 8],
+    pub attributes: [u8; 8],
+}
 
-pub(crate) const INDEX_HEADER: IndexFileHeader = IndexFileHeader { magic_number: 1 };
+impl Header {
+    pub const INDEX: Header = Header {
+        magic_number: *INDEX_MAGIC,
+        attributes: [0u8; 8],
+    };
+    pub const LOG: Header = Header {
+        magic_number: *LOG_MAGIC,
+        attributes: [0u8; 8],
+    };
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
-pub(crate) struct IndexFileHeader {
-    pub magic_number: u64,
-    // INDEXES
+    pub fn as_bytes(&self) -> [u8; 16] {
+        let mut bytes = [0u8; 16];
+        unsafe {
+            std::ptr::copy_nonoverlapping(self as *const Self as *const u8, bytes.as_mut_ptr(), 16);
+        }
+        bytes
+    }
+
+    pub fn write_to(&self, buf: &mut [u8]) {
+        assert!(buf.len() >= 16);
+        unsafe {
+            std::ptr::copy_nonoverlapping(self as *const Self as *const u8, buf.as_mut_ptr(), 16);
+        }
+    }
 }
 
 /// Index of UUID
@@ -49,5 +51,44 @@ pub(crate) struct UuidIndex {
     pub offset: u64, // OFFSET
 }
 
-impl_from_bytes!(UuidIndex);
-impl_from_bytes!(IndexFileHeader);
+impl UuidIndex {
+    pub fn new(uuid: Uuid, offset: u64) -> Self {
+        Self { uuid, offset }
+    }
+
+    pub fn as_bytes(&self) -> [u8; 24] {
+        let mut bytes = [0u8; 24];
+        unsafe {
+            std::ptr::copy_nonoverlapping(self.uuid.as_bytes().as_ptr(), bytes.as_mut_ptr(), 16);
+            std::ptr::copy_nonoverlapping(
+                self.offset.to_le_bytes().as_ptr(),
+                bytes.as_mut_ptr().add(16),
+                8,
+            );
+        }
+        bytes
+    }
+
+    pub fn from_bytes(&self, chunk: &[u8; 24]) -> Self {
+        let uuid = <Uuid as From<[u8; 16]>>::from(chunk[0..16].try_into().unwrap());
+        let offset = u64::from_le_bytes(chunk[16..24].try_into().unwrap());
+
+        Self { uuid, offset }
+    }
+}
+
+#[test]
+fn test_min_log_size() {
+    use bincode::Options;
+
+    use crate::bincode_option;
+
+    let min = Log {
+        uuid: Uuid::default(),
+        key: vec![],
+        value: vec![],
+    };
+
+    let min_size = bincode_option().serialized_size(&min).unwrap();
+    println!("min_size: {min_size}");
+}

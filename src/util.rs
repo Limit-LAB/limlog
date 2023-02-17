@@ -8,7 +8,7 @@ use std::{
 
 use bincode::Options;
 use bytes::Buf;
-use serde::{de::DeserializeOwned};
+use serde::de::DeserializeOwned;
 use uuid7::Uuid;
 
 pub(crate) trait ToTime {
