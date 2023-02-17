@@ -20,7 +20,6 @@
 | ------------ | ------- |
 | magic_number | 8 bytes |
 | attributes   | 8 bytes |
-| entry_count  | 8 bytes |
 
 - log
 
@@ -39,6 +38,7 @@
 | Field        | Size    |
 | ------------ | ------- |
 | magic_number | 8 bytes |
+| attributes   | 8 bytes |
 
 - index item
 

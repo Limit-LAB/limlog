@@ -8,6 +8,9 @@ pub enum ErrorType {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
+    #[error("Invalid reader offset, maximum {maximum}, got {got}")]
+    InvalidOffset { maximum: usize, got: usize },
+
     #[error("Channel sending error: {0}")]
     KanalSend(#[from] kanal::SendError),
 

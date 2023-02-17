@@ -24,12 +24,11 @@ git      = "https://github.com/George-Miao/uuid7-rs.git"
 rev      = "d137971d63b9706b322dfce2bc93123258dd4c38"
 
 [dev-dependencies]
-futures-executor = { version = "0.3.26", features = ["thread-pool"] }
+tokio = { version = "1.25.0", features = ["full"] }
 
-criterion    = "0.4.0"
-futures-time = "3.0.0"
-rand         = "0.8.5"
-tempfile     = "3.3.0"
+criterion = "0.4.0"
+rand      = "0.8.5"
+tempfile  = "3.3.0"
 
 [profile.release]
 debug = true
