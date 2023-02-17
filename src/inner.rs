@@ -24,8 +24,10 @@ impl Map {
             .write(true)
             .create(true)
             .open(path)?;
+
         file.try_lock_exclusive()?;
         file.set_len(size)?;
+
         let raw = MmapOptions::new().map_raw(&file)?;
         Ok(Self { raw, file })
     }

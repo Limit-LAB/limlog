@@ -24,6 +24,7 @@ use std::{
 use bincode::Options;
 use event_listener::EventListener;
 use futures::{ready, Future, Stream};
+use uuid7::Uuid;
 
 use crate::{
     consts::MIN_LOG_SIZE,
@@ -33,7 +34,7 @@ use crate::{
     util::{bincode_option, try_decode, BincodeOptions},
 };
 
-pub struct Appender {
+struct Appender {
     inner: Arc<Shared>,
     idx: IndexMap,
     recv: kanal::AsyncReceiver<Log>,
@@ -99,6 +100,10 @@ impl Topic {
             notify: inner.subscribe(),
             inner,
         }
+    }
+
+    pub fn reader_from(&self, from: &Uuid) -> Reader {
+        todo!()
     }
 
     async fn start_append(self) -> Result<()> {

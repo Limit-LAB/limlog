@@ -3,7 +3,7 @@ use uuid7::Uuid;
 
 use crate::{
     formats::log::{IndexFileHeader, Log, LogFileHeader, UuidIndex, INDEX_HEADER},
-    util::{bincode_option, to_uuid},
+    util::{bincode_option, to_uuid}, consts::MIN_LOG_SIZE,
 };
 
 pub(crate) const LOG1: [u8; 34] = [
@@ -139,9 +139,13 @@ fn test_ser() {
     let mut vec = vec![0u8; len];
     opt.serialize_into(&mut vec[..], &l1).unwrap();
 
-    eprintln!("{vec:?}");
+    eprintln!("Log bytes: {vec:?}");
 
     let l2 = opt.deserialize(&vec).unwrap();
 
-    assert_eq!(l1, l2)
+    assert_eq!(l1, l2);
+
+    let min_size = opt.serialized_size(&Log::default()).unwrap();
+    eprintln!("Min log size: {min_size}");
+    assert_eq!(min_size, MIN_LOG_SIZE as _);
 }

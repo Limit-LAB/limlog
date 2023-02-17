@@ -79,6 +79,7 @@ mod bincode_option_mod {
             .with_limit(1 << 12)
     }
 }
+
 pub use bincode_option_mod::{bincode_option, BincodeOptions};
 
 pub fn try_decode<T: DeserializeOwned + Debug>(
