@@ -105,7 +105,7 @@ fn test_index() {
     let expected_i2 = UuidIndex::new(to_uuid(2, 0), 58);
     let expected_i3 = UuidIndex::new(to_uuid(3, 0), 92);
 
-    // // index serialization
+    // index serialization
     assert_eq!(INDEX1, expected_i1.as_bytes());
     assert_eq!(INDEX2, expected_i2.as_bytes());
     assert_eq!(INDEX3, expected_i3.as_bytes());

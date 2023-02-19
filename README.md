@@ -23,13 +23,13 @@
 
 - log
 
-| Field       | Size              |
-| ----------- | ----------------- |
-| uuid        | 16 bytes          |
-| __key_len   | 8 bytes           |
-| key         | __key_len bytes   |
-| __value_len | 8 bytes           |
-| value       | __value_len bytes |
+| Field            | Size              |
+| ---------------- | ----------------- |
+| uuid(big endian) | 16 bytes          |
+| __key_len        | 8 bytes           |
+| key              | __key_len bytes   |
+| __value_len      | 8 bytes           |
+| value            | __value_len bytes |
 
 #### .idx
 
@@ -44,5 +44,5 @@
 
 | Field               | Size     |
 | ------------------- | -------- |
-| uuid                | 16 bytes |
+| uuid(big endian)    | 16 bytes |
 | offset (of .limlog) | 8 bytes  |

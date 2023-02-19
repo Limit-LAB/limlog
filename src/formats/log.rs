@@ -65,12 +65,13 @@ impl UuidIndex {
 
     pub fn as_bytes(&self) -> [u8; 24] {
         let mut bytes = [0u8; 24];
-        // [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-        println!("{:?}", self.uuid.as_bytes());
-
         unsafe {
-            // [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
-            std::ptr::copy_nonoverlapping(self.uuid.as_bytes().as_ptr(), bytes.as_mut_ptr(), 16);
+            // use big-endian encoding for UUID
+            std::ptr::copy_nonoverlapping(
+                <Uuid as Into<u128>>::into(self.uuid).to_le_bytes().as_ptr(),
+                bytes.as_mut_ptr(),
+                16,
+            );
             std::ptr::copy_nonoverlapping(
                 self.offset.to_le_bytes().as_ptr(),
                 bytes.as_mut_ptr().add(16),
@@ -81,7 +82,9 @@ impl UuidIndex {
     }
 
     pub fn from_bytes(chunk: &[u8; 24]) -> Self {
-        let uuid = <Uuid as From<[u8; 16]>>::from(chunk[0..16].try_into().unwrap());
+        // use big-endian decoding for UUID
+        let uuid =
+            <Uuid as From<u128>>::from(u128::from_le_bytes(chunk[0..16].try_into().unwrap()));
         let offset = u64::from_le_bytes(chunk[16..24].try_into().unwrap());
 
         Self { uuid, offset }
