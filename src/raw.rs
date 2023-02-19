@@ -1,4 +1,4 @@
-use std::{fs::File, path::Path};
+use std::{fs::File, io::Write, path::Path};
 
 use fs2::FileExt;
 use memmap2::{MmapOptions, MmapRaw};
@@ -23,10 +23,12 @@ impl Map {
             .open(path)?;
         file.try_lock_exclusive()?;
         file.set_len(size)?;
-        let raw = MmapOptions::new().map_raw(&file)?;
 
-        let this = Self { raw, header, file };
-        this.write_header(&header);
+        let raw = MmapOptions::new().map_raw(&file)?;
+        let mut this = Self { raw, header, file };
+        // TODO: check header if exist
+        this.init_header(&header)?;
+
         Ok(this)
     }
 
@@ -54,8 +56,8 @@ impl Map {
     }
 
     /// Write the header to the mmap
-    fn write_header(&self, header: &Header) {
-        unsafe { header.write_to(std::slice::from_raw_parts_mut(self.raw.as_mut_ptr(), 16)) }
+    fn init_header(&mut self, header: &Header) -> Result<()> {
+        unsafe { Ok(self.as_slice_mut().write_all(&header.as_bytes())?) }
     }
 
     /// # Safety
