@@ -144,5 +144,26 @@
 
 //     let l2 = opt.deserialize(&vec).unwrap();
 
-//     assert_eq!(l1, l2)
-// }
+    let expected_i1 = UuidIndex::new(to_uuid(1, 0), 24);
+    let expected_i2 = UuidIndex::new(to_uuid(2, 0), 58);
+    let expected_i3 = UuidIndex::new(to_uuid(3, 0), 92);
+
+    // index serialization
+    assert_eq!(INDEX1, expected_i1.as_bytes());
+    assert_eq!(INDEX2, expected_i2.as_bytes());
+    assert_eq!(INDEX3, expected_i3.as_bytes());
+
+    // index deserialization
+    assert_eq!(
+        expected_i1,
+        UuidIndex::from_bytes(&INDEX1.try_into().unwrap())
+    );
+    assert_eq!(
+        expected_i2,
+        UuidIndex::from_bytes(&INDEX2.try_into().unwrap())
+    );
+    assert_eq!(
+        expected_i3,
+        UuidIndex::from_bytes(&INDEX3.try_into().unwrap())
+    );
+}
