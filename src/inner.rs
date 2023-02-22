@@ -7,24 +7,60 @@ use std::{
     },
 };
 
+use arc_swap::ArcSwap;
 use bincode::Options;
 use event_listener::{Event, EventListener};
 
 use crate::{
-    error::Result,
+    error::{ErrorType, Result},
     formats::log::{Header, Log, UuidIndex},
     raw::Map,
     util::{bincode_option, BincodeOptions},
+    TopicBuilder,
 };
 
-/// Shared map for writing logs
-pub struct LogsMap {
+pub(crate) struct Shared {
+    pub conf: TopicBuilder,
+    event: Event,
+
+    /// Pointer to the active map. This is rarely changed and is only changed
+    /// when one map is full and a new map is created. Readers should keep a
+    /// copy of the pointer to the map when created so creating new map
+    /// won't interupt existing maps. When readers found EOF, they should
+    /// clone this pointer and read from the new map.
+    map: ArcSwap<SharedMap>,
+}
+
+impl Shared {
+    pub fn new(conf: TopicBuilder, map: Arc<SharedMap>) -> Self {
+        Self {
+            event: Event::new(),
+            conf,
+            map: ArcSwap::from(map),
+        }
+    }
+
+    pub fn store_map(&self, map: Arc<SharedMap>) {
+        self.map.store(map);
+    }
+
+    pub fn map(&self) -> Arc<SharedMap> {
+        self.map.load_full()
+    }
+
+    pub fn subscribe(&self) -> EventListener {
+        self.event.listen()
+    }
+}
+
+/// Shared map for reading concurrently and writing exclusively
+pub(crate) struct SharedMap {
     map: Map,
     offset: AtomicUsize,
 }
 
-impl LogsMap {
-    pub(crate) fn new(name: &str, dir: &Path) -> Result<Self> {
+impl SharedMap {
+    pub fn new(dir: &Path, name: &str) -> Result<Self> {
         let map = Map::new(
             &dir.join(name).with_extension("limlog"),
             1 << 24,
@@ -39,11 +75,6 @@ impl LogsMap {
     #[inline(always)]
     pub fn offset(&self) -> usize {
         self.offset.load(Ordering::SeqCst)
-    }
-
-    #[inline(always)]
-    pub(crate) fn commit(&self, len: usize) -> usize {
-        self.offset.fetch_add(len, Ordering::SeqCst) + len
     }
 
     /// Split the map into two slices, one immutable and one mutable, at the
@@ -65,7 +96,7 @@ impl LogsMap {
     }
 
     // SAFETY: Caller must guarantee that this is exclusive
-    unsafe fn write_half(&self) -> &mut [u8] {
+    unsafe fn mut_slice(&self) -> &mut [u8] {
         let at = self.offset();
         std::slice::from_raw_parts_mut(self.map.as_mut_ptr().add(at), self.map.len() - at)
     }
@@ -83,22 +114,39 @@ impl LogsMap {
     {
         &self.map.as_slice()[index]
     }
+
+    pub fn commit(&self, len: usize) -> Result<()> {
+        self.map.flush_range(self.offset(), len)?;
+        self.offset.fetch_add(len, Ordering::SeqCst);
+        Ok(())
+    }
+
+    #[inline]
+    pub fn slice(&self, from: usize) -> &[u8] {
+        // SAFETY: memory before `offset` are immutable and ready to be read
+        unsafe { self.index(from..self.offset()) }
+    }
+
+    #[inline]
+    pub fn remaining(&self) -> usize {
+        self.map.len() - self.offset()
+    }
 }
 
-impl Drop for LogsMap {
+impl Drop for SharedMap {
     fn drop(&mut self) {
         self.map.close(self.offset() as _).unwrap();
     }
 }
 
 /// Index
-pub struct IndexMap {
+pub struct UniqueMap {
     map: Map,
     pos: usize,
 }
 
-impl IndexMap {
-    pub(crate) fn new(name: &str, dir: &Path) -> Result<Self> {
+impl UniqueMap {
+    pub(crate) fn new(dir: &Path, name: &str) -> Result<Self> {
         let map = Map::new(
             &dir.join(name).with_extension("idx"),
             1 << 14,
@@ -120,112 +168,43 @@ impl IndexMap {
     }
 }
 
-impl Drop for IndexMap {
+impl Drop for UniqueMap {
     fn drop(&mut self) {
         self.map.close(self.pos as _).unwrap();
     }
 }
 
-pub struct Shared {
-    logs: LogsMap,
-    event: Event,
-}
-
-impl Shared {
-    #[inline]
-    pub(crate) fn new(logs: LogsMap, topic: String) -> Self {
-        Self {
-            logs,
-
-            event: Event::new(),
-        }
-    }
-
-    #[inline]
-    pub(crate) fn subscribe(&self) -> EventListener {
-        self.event.listen()
-    }
-
-    #[inline(always)]
-    pub(crate) fn offset(&self) -> usize {
-        self.logs.offset()
-    }
-
-    /// Index the underlying map
-    #[inline]
-    pub unsafe fn index<I>(&self, index: I) -> &I::Output
-    where
-        I: SliceIndex<[u8]>,
-    {
-        self.logs.index(index)
-    }
-
-    #[inline]
-    pub unsafe fn mut_slice(&self) -> &mut [u8] {
-        self.logs.write_half()
-    }
-
-    pub(crate) fn commit(&self, len: usize) -> Result<()> {
-        self.logs.map.flush_range(self.offset(), len)?;
-        self.logs.commit(len);
-        self.event.notify_additional(usize::MAX);
-        Ok(())
-    }
-
-    #[inline]
-    pub(crate) fn ref_slice(&self, from: usize) -> &[u8] {
-        let offset = self.offset();
-        debug_assert!(from <= offset);
-
-        // SAFETY: memory before `offset` are immutable and ready to be read
-        unsafe { self.index(from..offset) }
-    }
-
-    #[inline]
-    pub fn remaining(&self) -> usize {
-        self.logs.map.len() - self.offset()
-    }
-}
-
 pub(crate) struct Appender {
-    inner: Arc<Shared>,
-    idx: IndexMap,
+    map: Arc<SharedMap>,
+    idx: UniqueMap,
     recv: kanal::AsyncReceiver<Log>,
 }
 
 impl Appender {
-    pub fn new(inner: Arc<Shared>, idx: IndexMap, recv: kanal::AsyncReceiver<Log>) -> Self {
-        Self { inner, idx, recv }
-    }
-
-    pub fn arc_count(&self) -> usize {
-        Arc::strong_count(&self.inner)
+    pub fn new(map: Arc<SharedMap>, idx: UniqueMap, recv: kanal::AsyncReceiver<Log>) -> Self {
+        Self { map, idx, recv }
     }
 
     pub async fn run(mut self) -> Result<()> {
         let opt: BincodeOptions = bincode_option();
 
-        while let Ok(log) = self.recv.recv().await {
+        loop {
+            let log = self.recv.recv().await?;
             let len = opt.serialized_size(&log)? as usize;
-            if self.inner.remaining() < len {
-                break;
+            if self.map.remaining() < len {
+                return Err(ErrorType::LogFileFull);
             }
-            let offset = self.inner.offset() as _;
+            let offset = self.map.offset() as _;
             // SAFETY: We are the only one accessing the mutable portion of mmap
-            let buf = unsafe { self.inner.mut_slice() };
+            let buf = unsafe { self.map.mut_slice() };
             opt.serialize_into(&mut buf[..len], &log)?;
-            self.inner.commit(len)?;
+            self.map.commit(len)?;
             // If flush failed, don't commit the index
             self.idx.push(UuidIndex {
                 uuid: log.uuid,
                 offset,
             })?;
         }
-        Ok(())
-    }
-
-    pub fn shared(&self) -> Arc<Shared> {
-        self.inner.clone()
     }
 }
 
@@ -237,7 +216,7 @@ fn test_map() {
     use crate::Log;
 
     let dir = tempfile::tempdir().unwrap();
-    let map = LogsMap::new("123", dir.path()).unwrap();
+    let map = SharedMap::new(dir.path(), "123").unwrap();
 
     let (r, w) = unsafe { map.split_to(10) };
 

@@ -1,29 +1,36 @@
-use std::future::IntoFuture;
+use std::time::Duration;
 
+use futures::StreamExt;
 use tempfile::TempDir;
-use uuid7::uuid7;
+use tokio::time::sleep;
 
-use crate::{formats::log::Log, Topic};
+use crate::TopicBuilder;
 
 mod log_format_test;
 
 #[tokio::test]
 async fn test_run() {
     let dir = TempDir::new().unwrap();
-    let topic = Topic::new("test", dir.path()).unwrap();
+    let topic = TopicBuilder::new("123", dir.path())
+        .unwrap()
+        .build()
+        .await
+        .unwrap();
+
+    eprintln!("{:?}", topic.config());
 
     let w = topic.writer();
-    let h = tokio::spawn(topic.into_future());
+    let mut r = topic.reader();
 
     for i in 0..100u32 {
-        w.send
-            .send(Log {
-                uuid: uuid7(),
-                key: vec![],
-                value: i.to_be_bytes().to_vec(),
-            })
-            .await
-            .unwrap();
+        w.write(vec![], i.to_be_bytes()).await.unwrap();
     }
-    h.abort();
+
+    while let Some(e) = r.next().await {
+        eprintln!("{e:?}");
+    }
+
+    sleep(Duration::from_secs(1)).await;
+
+    topic.abort();
 }

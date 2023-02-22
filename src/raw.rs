@@ -5,12 +5,10 @@ use memmap2::{MmapOptions, MmapRaw};
 
 use crate::{consts::HEADER_SIZE, error::Result, formats::log::Header};
 
-struct MmapRecord {}
-
-/// A wrapper for [`MmapRaw`], and has a 16-byte header.
+/// A wrapper for [`MmapRaw`], with a 16-byte header.
 pub(crate) struct Map {
     raw: MmapRaw,
-    header: Header,
+
     file: File,
 }
 
@@ -26,7 +24,7 @@ impl Map {
         file.try_lock_exclusive()?;
         file.set_len(size)?;
         let raw = MmapOptions::new().map_raw(&file)?;
-        let this = Self { raw, header, file };
+        let this = Self { raw, file };
         this.write_header(&header);
         Ok(this)
     }
@@ -64,6 +62,19 @@ impl Map {
         unsafe { self.raw.as_mut_ptr().add(HEADER_SIZE) }
     }
 
+    pub fn update_header(&self, func: impl FnOnce(&mut Header)) {
+        func(&self.header);
+        self.write_header(&self.header);
+    }
+
+    fn load_header(&self) -> Header {
+        Header::from_bytes(unsafe {
+            &std::slice::from_raw_parts(self.raw.as_ptr(), 16)
+                .try_into()
+                .unwrap()
+        })
+    }
+
     /// Write the header to the mmap
     fn write_header(&self, header: &Header) {
         unsafe { header.write_to(std::slice::from_raw_parts_mut(self.raw.as_mut_ptr(), 16)) }
@@ -96,11 +107,11 @@ impl Map {
     }
 
     pub fn close(&self, final_len: u64) -> Result<()> {
-        let res = self.raw.flush();
-        // Unlock and truncate event flush failed
-        self.file.unlock()?;
-        self.file.set_len(final_len)?;
-        res?;
-        Ok(())
+        // Unlock and truncate even if flush failed
+        self.raw
+            .flush()
+            .and(self.file.set_len(final_len))
+            .and(self.file.unlock())
+            .map_err(Into::into)
     }
 }

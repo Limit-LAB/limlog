@@ -13,6 +13,9 @@ pub enum ErrorType {
     #[error("Channel sending error: {0}")]
     KanalSend(#[from] kanal::SendError),
 
+    #[error("Channel receive error: {0}")]
+    KanalRecv(#[from] kanal::ReceiveError),
+
     #[error("Bincode error: {0}")]
     Bincode(#[from] bincode::Error),
 
@@ -32,4 +35,4 @@ pub enum ErrorType {
     LogFileFull,
 }
 
-pub type Result<T> = std::result::Result<T, ErrorType>;
+pub type Result<T, E = ErrorType> = std::result::Result<T, E>;

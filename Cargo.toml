@@ -18,6 +18,8 @@ smallvec = { version = "1.10", features = ["union", "const_new", "const_generics
 futures  = { version = "0.3.26", default-features = false }
 tokio    = { version = "1", default-features = false }
 typed-builder = "0.12.0"
+arc-swap = "1.6.0"
+tap = "1.0.1"
 
 [dependencies.uuid7]
 version  = "0.3.4"
