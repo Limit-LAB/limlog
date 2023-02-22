@@ -23,7 +23,7 @@ impl LogsMap {
         let map = Map::new(
             &dir.join(topic).with_extension("limlog"),
             1 << 24,
-            Header::LOG_DEFAULT,
+            Header::LOG,
         )?;
         let offset = AtomicUsize::new(0);
 
@@ -91,7 +91,7 @@ impl IndexMap {
         let map = Map::new(
             &dir.join(topic).with_extension("idx"),
             1 << 14,
-            Header::INDEX_DEFAULT,
+            Header::INDEX,
         )?;
 
         Ok(Self { map, written_to: 0 })
