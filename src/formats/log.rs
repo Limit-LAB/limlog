@@ -12,7 +12,7 @@ pub struct Log {
 }
 
 #[repr(C, align(8))]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Default)]
 pub struct Header {
     pub magic_number: [u8; 8],
     pub attributes: [u8; 8],
@@ -44,6 +44,14 @@ impl Header {
             );
         }
     }
+
+    pub fn from_bytes(chunk: &[u8; 16]) -> Self {
+        let mut header = Header::default();
+        unsafe {
+            std::ptr::copy_nonoverlapping(chunk.as_ptr(), &mut header as *mut Self as *mut u8, 16);
+        }
+        header
+    }
 }
 
 /// Index of UUID
@@ -69,7 +77,11 @@ impl UuidIndex {
 
     pub fn write_to(&self, slice: &mut [u8; 24]) {
         unsafe {
-            std::ptr::copy_nonoverlapping(self.uuid.as_bytes().as_ptr(), slice.as_mut_ptr(), 16);
+            std::ptr::copy_nonoverlapping(
+                <Uuid as Into<u128>>::into(self.uuid).to_le_bytes().as_ptr(),
+                slice.as_mut_ptr(),
+                16,
+            );
             std::ptr::copy_nonoverlapping(
                 self.offset.to_le_bytes().as_ptr(),
                 slice.as_mut_ptr().add(16),
@@ -78,7 +90,7 @@ impl UuidIndex {
         }
     }
 
-    pub fn from_bytes(&self, chunk: &[u8; 24]) -> Self {
+    pub fn from_bytes(chunk: &[u8; 24]) -> Self {
         let uuid = <Uuid as From<[u8; 16]>>::from(chunk[0..16].try_into().unwrap());
         let offset = u64::from_le_bytes(chunk[16..24].try_into().unwrap());
 
