@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-
 pub enum ErrorType {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -25,6 +24,12 @@ pub enum ErrorType {
 
     #[error("Invalid log index file: zero-sized header")]
     EmptyIndexFile,
+
+    #[error("Log index file too small")]
+    IndexFileTooSmall,
+
+    #[error("Log index file is full")]
+    LogFileFull,
 }
 
 pub type Result<T> = std::result::Result<T, ErrorType>;

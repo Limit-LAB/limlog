@@ -3,7 +3,9 @@ use std::{fs::File, path::Path};
 use fs2::FileExt;
 use memmap2::{MmapOptions, MmapRaw};
 
-use crate::{error::Result, formats::log::Header};
+use crate::{consts::HEADER_SIZE, error::Result, formats::log::Header};
+
+struct MmapRecord {}
 
 /// A wrapper for [`MmapRaw`], and has a 16-byte header.
 pub(crate) struct Map {
@@ -14,7 +16,7 @@ pub(crate) struct Map {
 
 impl Map {
     pub(crate) fn new(path: &Path, size: u64, header: Header) -> Result<Self> {
-        assert!(size >= 16);
+        assert!(size >= HEADER_SIZE as _);
 
         let file = File::options()
             .read(true)
@@ -24,14 +26,23 @@ impl Map {
         file.try_lock_exclusive()?;
         file.set_len(size)?;
         let raw = MmapOptions::new().map_raw(&file)?;
-
         let this = Self { raw, header, file };
         this.write_header(&header);
         Ok(this)
     }
 
+    pub fn advice_write(&self, offset: usize, len: usize) -> Result<()> {
+        // #[cfg(unix)]
+        // self.raw.advise_range(Advice:: offset, len).map_err(Into::into)
+        todo!()
+    }
+
     pub fn flush(&self) -> Result<()> {
         self.raw.flush_async().map_err(Into::into)
+    }
+
+    pub fn flush_range(&self, offset: usize, len: usize) -> Result<()> {
+        self.raw.flush_async_range(offset, len).map_err(Into::into)
     }
 
     pub fn file(&self) -> &File {
@@ -40,17 +51,17 @@ impl Map {
 
     pub fn len(&self) -> usize {
         // Offset by size of header
-        self.raw.len() - 16
+        self.raw.len() - HEADER_SIZE
     }
 
     pub fn as_ptr(&self) -> *const u8 {
         // Offset by size of header
-        unsafe { self.raw.as_ptr().add(16) }
+        unsafe { self.raw.as_ptr().add(HEADER_SIZE) }
     }
 
     pub fn as_mut_ptr(&self) -> *mut u8 {
         // Offset by size of header
-        unsafe { self.raw.as_mut_ptr().add(16) }
+        unsafe { self.raw.as_mut_ptr().add(HEADER_SIZE) }
     }
 
     /// Write the header to the mmap
@@ -66,7 +77,7 @@ impl Map {
 
     /// # Safety
     /// Caller must ensure that access to the slice is exclusive
-    pub unsafe fn as_slice_mut(&mut self) -> &mut [u8] {
+    pub unsafe fn as_mut_slice(&mut self) -> &mut [u8] {
         std::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len())
     }
 
@@ -83,12 +94,13 @@ impl Map {
     pub unsafe fn start_at_mut(&mut self, offset: usize) -> &mut [u8] {
         std::slice::from_raw_parts_mut(self.as_mut_ptr().add(offset), self.len())
     }
-}
 
-impl Drop for Map {
-    fn drop(&mut self) {
-        self.raw.flush().unwrap();
-        self.file.unlock().unwrap();
-        self.file.set_len(self.raw.len() as u64).unwrap();
+    pub fn close(&self, final_len: u64) -> Result<()> {
+        let res = self.raw.flush();
+        // Unlock and truncate event flush failed
+        self.file.unlock()?;
+        self.file.set_len(final_len)?;
+        res?;
+        Ok(())
     }
 }

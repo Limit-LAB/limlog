@@ -34,6 +34,16 @@ impl ToTime for Uuid {
 }
 
 #[inline]
+pub(crate) fn uuid_now() -> Uuid {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+
+    to_uuid(now as _, 0)
+}
+
+#[inline]
 pub(crate) fn to_uuid(ts: u64, fill: u8) -> Uuid {
     let mut uuid = [fill; 16];
     uuid[..6].copy_from_slice(&ts.to_be_bytes()[2..8]);

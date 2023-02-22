@@ -1,15 +1,20 @@
 use std::{
     path::Path,
     slice::SliceIndex,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
+use bincode::Options;
 use event_listener::{Event, EventListener};
 
 use crate::{
     error::Result,
-    formats::log::{Header, UuidIndex},
+    formats::log::{Header, Log, UuidIndex},
     raw::Map,
+    util::{bincode_option, BincodeOptions},
 };
 
 /// Shared map for writing logs
@@ -19,9 +24,9 @@ pub struct LogsMap {
 }
 
 impl LogsMap {
-    pub(crate) fn new(topic: &str, dir: &Path) -> Result<Self> {
+    pub(crate) fn new(name: &str, dir: &Path) -> Result<Self> {
         let map = Map::new(
-            &dir.join(topic).with_extension("limlog"),
+            &dir.join(name).with_extension("limlog"),
             1 << 24,
             Header::LOG,
         )?;
@@ -80,33 +85,49 @@ impl LogsMap {
     }
 }
 
+impl Drop for LogsMap {
+    fn drop(&mut self) {
+        self.map.close(self.offset() as _).unwrap();
+    }
+}
+
 /// Index
 pub struct IndexMap {
     map: Map,
-    written_to: usize,
+    pos: usize,
 }
 
 impl IndexMap {
-    pub(crate) fn new(topic: &str, dir: &Path) -> Result<Self> {
+    pub(crate) fn new(name: &str, dir: &Path) -> Result<Self> {
         let map = Map::new(
-            &dir.join(topic).with_extension("idx"),
+            &dir.join(name).with_extension("idx"),
             1 << 14,
             Header::INDEX,
         )?;
 
-        Ok(Self { map, written_to: 0 })
+        Ok(Self { map, pos: 0 })
     }
 
-    pub(crate) fn push(&mut self, index: UuidIndex) {
-        // SAFETY: Self is a mutable reference
+    pub(crate) fn push(&mut self, index: UuidIndex) -> Result<()> {
+        if self.pos + 24 > self.map.len() {
+            return Err(crate::error::ErrorType::IndexFileTooSmall);
+        }
+        // SAFETY: self is a mutable reference
+        let slice = unsafe { &mut self.map.as_mut_slice()[self.pos..self.pos + 24] };
+        index.write_to(slice.try_into().unwrap());
+        self.pos += 24;
+        Ok(())
+    }
+}
 
-        // let size unsafe { self.map.start_at_mut(index) };
+impl Drop for IndexMap {
+    fn drop(&mut self) {
+        self.map.close(self.pos as _).unwrap();
     }
 }
 
 pub struct Shared {
     logs: LogsMap,
-    topic: String,
     event: Event,
 }
 
@@ -115,14 +136,9 @@ impl Shared {
     pub(crate) fn new(logs: LogsMap, topic: String) -> Self {
         Self {
             logs,
-            topic,
+
             event: Event::new(),
         }
-    }
-
-    #[inline]
-    pub(crate) fn topic(&self) -> &str {
-        &self.topic
     }
 
     #[inline]
@@ -145,14 +161,14 @@ impl Shared {
     }
 
     #[inline]
-    pub(crate) unsafe fn mut_slice(&self) -> &mut [u8] {
+    pub unsafe fn mut_slice(&self) -> &mut [u8] {
         self.logs.write_half()
     }
 
-    pub(crate) fn flush(&self, len: usize) -> Result<()> {
-        self.logs.map.flush()?;
+    pub(crate) fn commit(&self, len: usize) -> Result<()> {
+        self.logs.map.flush_range(self.offset(), len)?;
         self.logs.commit(len);
-        self.event.notify_additional(10);
+        self.event.notify_additional(usize::MAX);
         Ok(())
     }
 
@@ -171,12 +187,54 @@ impl Shared {
     }
 }
 
+pub(crate) struct Appender {
+    inner: Arc<Shared>,
+    idx: IndexMap,
+    recv: kanal::AsyncReceiver<Log>,
+}
+
+impl Appender {
+    pub fn new(inner: Arc<Shared>, idx: IndexMap, recv: kanal::AsyncReceiver<Log>) -> Self {
+        Self { inner, idx, recv }
+    }
+
+    pub fn arc_count(&self) -> usize {
+        Arc::strong_count(&self.inner)
+    }
+
+    pub async fn run(mut self) -> Result<()> {
+        let opt: BincodeOptions = bincode_option();
+
+        while let Ok(log) = self.recv.recv().await {
+            let len = opt.serialized_size(&log)? as usize;
+            if self.inner.remaining() < len {
+                break;
+            }
+            let offset = self.inner.offset() as _;
+            // SAFETY: We are the only one accessing the mutable portion of mmap
+            let buf = unsafe { self.inner.mut_slice() };
+            opt.serialize_into(&mut buf[..len], &log)?;
+            self.inner.commit(len)?;
+            // If flush failed, don't commit the index
+            self.idx.push(UuidIndex {
+                uuid: log.uuid,
+                offset,
+            })?;
+        }
+        Ok(())
+    }
+
+    pub fn shared(&self) -> Arc<Shared> {
+        self.inner.clone()
+    }
+}
+
 #[test]
 fn test_map() {
     use bincode::Options;
     use uuid7::Uuid;
 
-    use crate::{bincode_option, Log};
+    use crate::Log;
 
     let dir = tempfile::tempdir().unwrap();
     let map = LogsMap::new("123", dir.path()).unwrap();

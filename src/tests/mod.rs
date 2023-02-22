@@ -1,12 +1,6 @@
-use std::{
-    future::IntoFuture,
-    time::{Duration, Instant},
-};
+use std::future::IntoFuture;
 
-use futures::StreamExt;
-use rand::Rng;
 use tempfile::TempDir;
-use tokio::{select, time::sleep};
 use uuid7::uuid7;
 
 use crate::{formats::log::Log, Topic};
@@ -18,44 +12,18 @@ async fn test_run() {
     let dir = TempDir::new().unwrap();
     let topic = Topic::new("test", dir.path()).unwrap();
 
-    for i in 0..10 {
-        tokio::spawn({
-            let w = topic.writer().clone();
-            async move {
-                let mut counter = 0;
-                loop {
-                    w.send
-                        .send(Log {
-                            uuid: uuid7(),
-                            key: vec![i],
-                            value: vec![counter % u8::MAX],
-                        })
-                        .await
-                        .unwrap();
-                    counter += 1;
-                    let secs = { rand::thread_rng().gen_range(0.5..1.5) };
-                    sleep(Duration::from_secs_f32(secs)).await;
-                }
-            }
-        });
-    }
+    let w = topic.writer();
+    let h = tokio::spawn(topic.into_future());
 
-    for i in 0..10 {
-        tokio::spawn({
-            let mut r = topic.reader();
-            async move {
-                loop {
-                    let now = Instant::now();
-                    let item = r.next().await.unwrap().unwrap();
-                    eprintln!("#{i} {:?}: {:?}", item.key, item.value);
-                    eprintln!("Passed {}", now.elapsed().as_secs_f32());
-                }
-            }
-        });
+    for i in 0..100u32 {
+        w.send
+            .send(Log {
+                uuid: uuid7(),
+                key: vec![],
+                value: i.to_be_bytes().to_vec(),
+            })
+            .await
+            .unwrap();
     }
-
-    select! {
-        _ = topic.into_future() => {}
-        _ = tokio::signal::ctrl_c() => {}
-    }
+    h.abort();
 }

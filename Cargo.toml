@@ -16,6 +16,8 @@ serde    = { version = "1", features = ["derive"] }
 kanal    = { version = "0.1.0-pre8", default-features = false, features = ["async"] }
 smallvec = { version = "1.10", features = ["union", "const_new", "const_generics", "specialization"] }
 futures  = { version = "0.3.26", default-features = false }
+tokio    = { version = "1", default-features = false }
+typed-builder = "0.12.0"
 
 [dependencies.uuid7]
 version  = "0.3.4"
