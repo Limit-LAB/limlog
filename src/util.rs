@@ -7,11 +7,11 @@ use std::{
 };
 
 use bincode::Options;
-use bytes::Buf;
+// use bytes::Buf;
 use serde::de::DeserializeOwned;
 use uuid7::Uuid;
 
-pub(crate) trait ToTime {
+pub trait ToTime {
     /// Retrieve the [SystemTime] of the object.
     fn to_system_time(&self) -> SystemTime;
 
@@ -34,14 +34,24 @@ impl ToTime for Uuid {
 }
 
 #[inline]
-pub(crate) fn to_uuid(ts: u64, fill: u8) -> Uuid {
+pub fn uuid_now() -> Uuid {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+
+    to_uuid(now as _, 0)
+}
+
+#[inline]
+pub fn to_uuid(ts: u64, fill: u8) -> Uuid {
     let mut uuid = [fill; 16];
     uuid[..6].copy_from_slice(&ts.to_be_bytes()[2..8]);
     Uuid::from(uuid)
 }
 
 // scan the log groups in the given path
-pub(crate) fn log_groups(log_dir: impl AsRef<Path>) -> Vec<Uuid> {
+pub fn log_groups(log_dir: impl AsRef<Path>) -> Vec<Uuid> {
     let Ok(dirs) = fs::read_dir(log_dir.as_ref()) else {
         return Vec::new();
     };
@@ -82,14 +92,22 @@ mod bincode_option_mod {
 
 pub use bincode_option_mod::{bincode_option, BincodeOptions};
 
+/// Try to decode from stream of bytes with bincode.
+///
+/// # Retrun
+///
+/// - If the buffer starts with a valid `T`, return `Some((T, bytes_read))`.
+/// - If the buffer does not start with a valid `T`, return `None`. This means
+///   either the buffer is not filled or it's corrupted
+/// - If any error happened, return `Err`.
 pub fn try_decode<T: DeserializeOwned + Debug>(
-    data: &impl Buf,
+    data: &[u8],
 ) -> Result<Option<(T, u64)>, bincode::Error> {
-    if data.chunk().is_empty() {
+    if data.is_empty() {
         return Ok(None);
     }
 
-    let mut cur = Cursor::new(data.chunk());
+    let mut cur = Cursor::new(data);
 
     let res = bincode_option().deserialize_from(&mut cur);
 
@@ -102,4 +120,64 @@ pub fn try_decode<T: DeserializeOwned + Debug>(
             _ => Err(e),
         },
     }
+}
+
+pub trait SubArray {
+    const LEN: usize;
+    type T;
+
+    fn sub<const L: usize, const R: usize>(&self) -> &[Self::T; R - L]
+    where
+        Bool<{ Self::LEN >= R }>: True,
+        Bool<{ R >= L }>: True;
+}
+
+pub trait SubArrayMut: SubArray {
+    fn sub_mut<const L: usize, const R: usize>(&mut self) -> &mut [Self::T; R - L]
+    where
+        Bool<{ Self::LEN >= R }>: True,
+        Bool<{ R >= L }>: True;
+}
+
+impl<T, const LEN: usize> SubArray for [T; LEN] {
+    type T = T;
+
+    const LEN: usize = LEN;
+
+    fn sub<const L: usize, const R: usize>(&self) -> &[T; R - L]
+    where
+        Bool<{ Self::LEN >= R }>: True,
+        Bool<{ R >= L }>: True,
+    {
+        self[L..R].try_into().unwrap()
+    }
+}
+
+impl<T, const LEN: usize> SubArrayMut for [T; LEN] {
+    fn sub_mut<const L: usize, const R: usize>(&mut self) -> &mut [T; R - L]
+    where
+        Bool<{ Self::LEN >= R }>: True,
+        Bool<{ R >= L }>: True,
+    {
+        (&mut self[L..R]).try_into().unwrap()
+    }
+}
+
+pub trait True {}
+
+pub struct Bool<const B: bool>;
+
+impl True for Bool<true> {}
+
+#[test]
+fn test_subarray() {
+    let a = [1, 2, 3, 4, 5];
+    assert_eq!(a.sub::<0, 5>(), &a);
+    assert_eq!(a.sub::<1, 3>(), &[2, 3]);
+
+    // This will fail
+    // a.sub::<0, 12>();
+
+    // This will fail too
+    // a.sub::<13, 12>();
 }

@@ -1,61 +1,34 @@
-use std::{
-    future::IntoFuture,
-    time::{Duration, Instant},
-};
+use std::time::Duration;
 
 use futures::StreamExt;
-use rand::Rng;
 use tempfile::TempDir;
-use tokio::{select, time::sleep};
-use uuid7::uuid7;
+use tokio::time::sleep;
 
-use crate::{formats::log::Log, Topic};
+use crate::TopicBuilder;
 
 mod log_format_test;
 
 #[tokio::test]
 async fn test_run() {
     let dir = TempDir::new().unwrap();
-    let topic = Topic::new("test", dir.path()).unwrap();
+    let topic = TopicBuilder::new_with_dir("123", dir.path())
+        .unwrap()
+        .build()
+        .await
+        .unwrap();
 
-    for i in 0..10 {
-        tokio::spawn({
-            let w = topic.writer().clone();
-            async move {
-                let mut counter = 0;
-                loop {
-                    w.send
-                        .send(Log {
-                            uuid: uuid7(),
-                            key: vec![i],
-                            value: vec![counter % u8::MAX],
-                        })
-                        .await
-                        .unwrap();
-                    counter += 1;
-                    let secs = { rand::thread_rng().gen_range(0.5..1.5) };
-                    sleep(Duration::from_secs_f32(secs)).await;
-                }
-            }
-        });
+    eprintln!("{:?}", topic.config());
+
+    let w = topic.writer();
+    let mut r = topic.reader();
+
+    r.next().await.unwrap().unwrap();
+
+    while let Some(e) = r.next().await {
+        eprintln!("{e:?}");
     }
 
-    for i in 0..10 {
-        tokio::spawn({
-            let mut r = topic.reader();
-            async move {
-                loop {
-                    let now = Instant::now();
-                    let item = r.next().await.unwrap().unwrap();
-                    eprintln!("#{i} {:?}: {:?}", item.key, item.value);
-                    eprintln!("Passed {}", now.elapsed().as_secs_f32());
-                }
-            }
-        });
-    }
+    sleep(Duration::from_secs(1)).await;
 
-    select! {
-        _ = topic.into_future() => {}
-        _ = tokio::signal::ctrl_c() => {}
-    }
+    topic.abort();
 }

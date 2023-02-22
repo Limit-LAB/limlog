@@ -1,94 +1,165 @@
 // Features
+#![allow(incomplete_features)]
 #![feature(io_error_more)]
 #![feature(type_alias_impl_trait)]
+#![feature(generic_const_exprs)]
 
 pub mod consts;
 pub mod formats;
 
-mod error;
-mod gc;
-mod inner;
-mod raw;
 mod util;
+
+mod_use::mod_use![error, inner, raw];
 
 #[cfg(test)]
 mod tests;
 
 use std::{
-    future::IntoFuture,
     io::{Error as IoError, ErrorKind as IoErrorKind},
-    path::Path,
+    path::PathBuf,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
 };
 
-use bincode::Options;
 use event_listener::EventListener;
 use futures::{ready, Future, Stream};
+use kanal::SendFuture;
+use tap::{Conv, Pipe};
+use tokio::{fs, task::JoinHandle};
+use uuid7::uuid7;
 
 use crate::{
     consts::MIN_LOG_SIZE,
     error::{ErrorType, Result},
-    formats::log::Log,
-    inner::{IndexMap, LogsMap, Shared},
-    util::{bincode_option, try_decode, BincodeOptions},
+    formats::Log,
+    inner::{Appender, Shared, SharedMap, UniqueMap},
+    util::try_decode,
 };
 
-/// The long-live future which the appender start to receive logs and append to
-/// the mmap. This should normally be spawned as a task.
-pub type Appending = impl Future<Output = Result<()>>;
-
-pub struct Appender {
-    inner: Arc<Shared>,
-    idx: IndexMap,
-    recv: kanal::AsyncReceiver<Log>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TopicBuilder {
+    topic: String,
+    dir: PathBuf,
+    log_size: usize,
+    index_size: usize,
+    channel_size: usize,
 }
 
-impl Appender {
-    async fn start_append(self) -> Result<()> {
-        let opt: BincodeOptions = bincode_option();
+impl TopicBuilder {
+    pub fn new(topic: impl Into<String>) -> Result<Self> {
+        Self::new_with_dir(topic, std::env::current_dir()?)
+    }
 
-        while let Ok(log) = self.recv.recv().await {
-            let _offset = self.inner.offset();
-            let len = opt.serialized_size(&log)? as usize;
-            if self.inner.remaining() < len {
-                break;
-            }
-            // SAFETY: We are the only one accessing the mutable portion of mmap
-            let buf = unsafe { self.inner.mut_slice() };
-            opt.serialize_into(&mut buf[..len], &log)?;
-            self.inner.flush(len)?;
+    pub fn new_with_dir(topic: impl Into<String>, dir: impl Into<PathBuf>) -> Result<Self> {
+        let dir = dir.into();
+
+        if !dir.is_dir() {
+            return IoError::new(IoErrorKind::NotADirectory, dir.display().to_string())
+                .conv::<ErrorType>()
+                .pipe(Err);
         }
-        Ok(())
+
+        let topic = topic.into();
+        let dir = dir.join(&topic);
+
+        Ok(Self {
+            topic: topic.into(),
+            dir: dir.into(),
+            log_size: 1 << 24,    // 16M
+            index_size: 1 << 16,  // 64k
+            channel_size: 1 << 4, // 16
+        })
+    }
+
+    pub fn with_directory(mut self, dir: impl Into<PathBuf>) -> Result<Self> {
+        self.dir = dir.into();
+        if !self.dir.is_dir() {
+            return IoError::new(IoErrorKind::NotADirectory, self.dir.display().to_string())
+                .conv::<ErrorType>()
+                .pipe(Err);
+        }
+        Ok(self)
+    }
+
+    pub fn with_log_size(mut self, log_size: usize) -> Self {
+        self.log_size = log_size;
+        self
+    }
+
+    pub fn with_index_size(mut self, index_size: usize) -> Self {
+        self.index_size = index_size;
+        self
+    }
+
+    pub fn topic_dir(&self) -> PathBuf {
+        self.dir.join(&self.topic)
+    }
+
+    pub async fn build(self) -> Result<Topic> {
+        Topic::new(self).await
     }
 }
 
 pub struct Topic {
-    appender: Appender,
+    shared: Arc<Shared>,
+    handle: JoinHandle<Result<()>>,
     send: kanal::AsyncSender<Log>,
 }
 
 impl Topic {
-    pub fn new(topic: impl Into<String>, dir: impl AsRef<Path>) -> Result<Self> {
-        let dir = dir.as_ref();
-        if !dir.is_dir() {
-            return Err(ErrorType::Io(IoError::new(
-                IoErrorKind::NotADirectory,
-                dir.display().to_string(),
-            )));
+    pub fn builder(topic: impl Into<String>) -> Result<TopicBuilder> {
+        TopicBuilder::new(topic)
+    }
+
+    pub async fn new(conf: TopicBuilder) -> Result<Self> {
+        let (send, recv) = kanal::bounded_async(conf.channel_size);
+
+        let dir = conf.topic_dir();
+        fs::create_dir_all(&dir).await?;
+
+        let (log_map, appender) = Self::make_maps(&conf, recv)?;
+        let shared = Arc::new(Shared::new(conf, log_map));
+        let handle = tokio::spawn(Self::background(shared.clone(), appender));
+
+        Ok(Self {
+            shared,
+            handle,
+            send,
+        })
+    }
+
+    pub fn config(&self) -> &TopicBuilder {
+        &self.shared.conf
+    }
+
+    fn make_maps(
+        conf: &TopicBuilder,
+        recv: kanal::AsyncReceiver<Log>,
+    ) -> Result<(Arc<SharedMap>, Appender)> {
+        let filename = util::uuid_now().encode();
+        let dir = conf.topic_dir();
+
+        let log_map = SharedMap::new(&dir, filename.as_str())?.pipe(Arc::new);
+        let idx_map = UniqueMap::new(&dir, filename.as_str())?;
+        let appender = Appender::new(log_map.clone(), idx_map, recv);
+
+        Ok((log_map, appender))
+    }
+
+    async fn background(shared: Arc<Shared>, mut appender: Appender) -> Result<()> {
+        loop {
+            // Start receiving and save logs
+            appender.run().await?;
+
+            let (_, _, recv) = appender.into_parts();
+
+            // Log file is full, create a new one
+            let (map, app) = Self::make_maps(&shared.conf, recv)?;
+
+            appender = app;
+            shared.swap_map(map);
         }
-        let topic = topic.into();
-
-        let logs = LogsMap::new(&topic, dir)?;
-        let idx = IndexMap::new(&topic, dir)?;
-
-        let inner = Arc::new(Shared::new(logs, topic));
-
-        let (send, recv) = kanal::bounded_async(1 << 4);
-        let appender = Appender { inner, idx, recv };
-
-        Ok(Self { send, appender })
     }
 
     pub fn writer(&self) -> Writer {
@@ -98,18 +169,19 @@ impl Topic {
     }
 
     pub fn reader(&self) -> Reader {
-        let inner = self.appender.inner.clone();
+        let shared = self.shared.clone();
+        let map = shared.map();
 
         Reader {
-            read_at: inner.offset(),
-            notify: inner.subscribe(),
-            inner,
+            read_at: map.offset(),
+            notify: shared.subscribe(),
+            map,
+            shared,
         }
     }
 
     pub fn reader_at(&self, read_at: usize) -> Result<Reader> {
-        let inner = self.appender.inner.clone();
-        let offset = inner.offset();
+        let offset = self.shared.offset();
         if read_at > offset {
             return Err(ErrorType::InvalidOffset {
                 maximum: offset,
@@ -117,20 +189,24 @@ impl Topic {
             });
         }
 
+        let shared = self.shared.clone();
+        let map = self.shared.map();
+
         Ok(Reader {
             read_at,
-            notify: inner.subscribe(),
-            inner,
+            notify: shared.subscribe(),
+            map,
+            shared,
         })
     }
-}
 
-impl IntoFuture for Topic {
-    type IntoFuture = Appending;
-    type Output = Result<()>;
+    pub fn abort(&self) {
+        self.handle.abort();
+    }
 
-    fn into_future(self) -> Self::IntoFuture {
-        self.appender.start_append()
+    pub async fn join(self) -> Result<()> {
+        self.handle.await.unwrap()?;
+        Ok(())
     }
 }
 
@@ -139,19 +215,34 @@ pub struct Writer {
     send: kanal::AsyncSender<Log>,
 }
 
+impl Writer {
+    pub fn write(&self, key: impl Into<Vec<u8>>, value: impl Into<Vec<u8>>) -> SendFuture<'_, Log> {
+        self.send.send(Log {
+            uuid: uuid7(),
+            key: key.into(),
+            value: value.into(),
+        })
+    }
+}
+
 pin_project_lite::pin_project! {
     pub struct Reader {
         #[pin]
         notify: EventListener,
+        // Current read position
         read_at: usize,
-        inner: Arc<Shared>,
+        // Map being reading, may not be the latest one
+        map: Arc<SharedMap>,
+        // Up to date shared info
+        shared: Arc<Shared>
     }
 }
 
 impl Reader {
+    // Get the unread bytes. This will start at the log boundary. (i.e. followed
+    // by a valid log or nothing)
     pub fn as_slice(&self) -> &[u8] {
-        // SAFETY: memory before `offset` are immutable and ready to be read
-        unsafe { self.inner.index(self.read_at..self.inner.offset()) }
+        self.map.slice(self.read_at)
     }
 }
 
@@ -160,24 +251,51 @@ impl Stream for Reader {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.project();
-        let (inner, mut notify) = (this.inner, this.notify);
+        let (map, mut notify) = (this.map, this.notify);
 
         loop {
-            if inner.offset() - *this.read_at < MIN_LOG_SIZE {
-                std::mem::replace(&mut *notify, inner.subscribe()).discard();
+            // We don't have enough data to decode a log. Check if the map is closed and if
+            // any event has been emitted.
+            if map.offset() - *this.read_at < MIN_LOG_SIZE {
+                // Current map is obsolete
+                if map.is_finished() {
+                    let current = this.shared.map();
+
+                    // If the active map is finished, the background task is not making more
+                    // progress (swap the map). Mark the reader as finished.
+                    if current.is_finished() {
+                        return Poll::Ready(None);
+                    }
+
+                    // Otherwise, swap it with the active one and reset the read
+                    // pointer.
+                    *map = current;
+                    *this.read_at = 0;
+                }
+
+                // Poll the event listener. If no event has been emitted, return
+                // `Poll::Pending`. If it's `Poll::Ready`, new data is available after
+                // last `offset` call, continue to decoding.
                 ready!(notify.as_mut().poll(cx));
             }
 
-            let slice = inner.ref_slice(*this.read_at);
+            let slice = map.slice(*this.read_at);
 
             match try_decode::<Log>(&slice) {
+                // Successfully decoded a log. Advance the read pointer.
                 Ok(Some((log, read))) => {
                     *this.read_at += read as usize;
                     return Poll::Ready(Some(Ok(log)));
                 }
+
+                // Error while decoding.
                 Err(e) => return Poll::Ready(Some(Err(ErrorType::Bincode(e)))),
+
+                // This should not happen. If it does, there's some problem with the writer, we need
+                // to wait for the next chunk of data to be written. This behavior maybe changed to
+                // return an error in future.
                 Ok(None) => {
-                    std::mem::replace(&mut *notify, inner.subscribe()).discard();
+                    std::mem::replace(&mut *notify, this.shared.subscribe()).discard();
                     ready!(notify.as_mut().poll(cx));
                 }
             }
