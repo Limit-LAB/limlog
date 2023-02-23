@@ -11,7 +11,7 @@ use bincode::Options;
 use event_listener::{Event, EventListener};
 
 use crate::{
-    consts::INDEX_SIZE,
+    consts::{INDEX_SIZE, MIN_LOG_SIZE},
     error::Result,
     formats::{Header, Log, UuidIndex},
     raw::RawMap,
@@ -21,7 +21,7 @@ use crate::{
 
 pub(crate) struct Shared {
     pub conf: TopicBuilder,
-    event: Event,
+    event: Arc<Event>,
 
     /// Pointer to the active map. This is rarely changed and is only changed
     /// when one map is full and a new map is created. Readers should keep a
@@ -32,10 +32,10 @@ pub(crate) struct Shared {
 }
 
 impl Shared {
-    pub fn new(conf: TopicBuilder, map: Arc<SharedMap>) -> Self {
+    pub fn new(conf: TopicBuilder, event: Arc<Event>, map: Arc<SharedMap>) -> Self {
         Self {
-            event: Event::new(),
             conf,
+            event,
             map: ArcSwap::from(map),
         }
     }
@@ -66,11 +66,7 @@ pub(crate) struct SharedMap {
 
 impl SharedMap {
     pub fn new(dir: &Path, name: &str, size: u64) -> Result<Self> {
-        let map = RawMap::new(
-            &dir.join(name).with_extension("limlog"),
-            1 << 24,
-            Header::LOG,
-        )?;
+        let map = RawMap::new(&dir.join(name).with_extension("limlog"), size, Header::LOG)?;
         let offset = AtomicUsize::new(0);
         let finished = AtomicBool::new(false);
 
@@ -118,7 +114,7 @@ impl SharedMap {
 
     pub fn commit(&self, len: usize) -> Result<()> {
         self.map.flush_range(self.offset(), len)?;
-        self.offset.fetch_add(len, Ordering::SeqCst);
+        self.offset.fetch_add(len, Ordering::AcqRel);
         Ok(())
     }
 
@@ -183,42 +179,62 @@ impl Drop for UniqueMap {
 }
 
 pub(crate) struct Appender {
-    map: Arc<SharedMap>,
-    idx: UniqueMap,
-    recv: kanal::AsyncReceiver<Log>,
+    pub log: Arc<SharedMap>,
+    pub idx: UniqueMap,
+    pub event: Arc<Event>,
+    pub recv: kanal::AsyncReceiver<Log>,
 }
 
 impl Appender {
-    pub fn new(map: Arc<SharedMap>, idx: UniqueMap, recv: kanal::AsyncReceiver<Log>) -> Self {
-        Self { map, idx, recv }
-    }
-
-    pub fn into_parts(self) -> (Arc<SharedMap>, UniqueMap, kanal::AsyncReceiver<Log>) {
-        (self.map, self.idx, self.recv)
-    }
-
-    pub async fn run(&mut self) -> Result<()> {
+    /// Run with the given [`Log`] and return the last [`Log`] if it
+    /// cannot write it to log file due to file size.
+    pub async fn run(&mut self, mut rem: Option<Log>) -> Result<Option<Log>> {
         let opt: BincodeOptions = bincode_option();
+
+        if let Some(log) = rem.take() {
+            if let Some(rem) = self.write_one(&opt, log)? {
+                return Ok(Some(rem));
+            }
+        }
 
         loop {
             let log = self.recv.recv().await?;
-            let len = opt.serialized_size(&log)? as usize;
+            if let Some(rem) = self.write_one(&opt, log)? {
+                return Ok(Some(rem));
+            }
 
-            let offset = self.map.offset() as _;
-            // SAFETY: We are the only one accessing the mutable portion of mmap
-            let buf = unsafe { self.map.mut_slice() };
-            opt.serialize_into(&mut buf[..len], &log)?;
-            self.map.commit(len)?;
-            // If flush failed, don't commit the index
-            self.idx.push(UuidIndex {
-                uuid: log.uuid,
-                offset,
-            })?;
-            if self.map.remaining() < len || self.idx.is_full() {
-                self.map.finish();
-                return Ok(());
+            // If the map is full, return without any remaining log
+            if self.log.remaining() < MIN_LOG_SIZE || self.idx.is_full() {
+                return Ok(None);
             }
         }
+    }
+
+    fn write_one(&mut self, opt: &BincodeOptions, log: Log) -> Result<Option<Log>> {
+        let len = opt.serialized_size(&log)? as usize;
+
+        if self.log.remaining() < MIN_LOG_SIZE || self.idx.is_full() {
+            return Ok(Some(log));
+        }
+
+        let offset = self.log.offset() as _;
+
+        // SAFETY: We are the only one accessing the mutable portion of mmap
+        let buf = unsafe { self.log.mut_slice() };
+
+        opt.serialize_into(&mut buf[..len], &log)?;
+
+        // Commit map. If commit failed, leave index untouched
+        self.log.commit(len)?;
+        self.idx.push(UuidIndex {
+            uuid: log.uuid,
+            offset,
+        })?;
+
+        // Write successfully, notify all pending readers
+        self.event.notify_additional(usize::MAX);
+
+        Ok(None)
     }
 }
 
