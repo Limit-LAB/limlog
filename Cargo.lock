@@ -411,6 +411,7 @@ dependencies = [
  "event-listener",
  "fs2",
  "futures",
+ "futures-core",
  "kanal",
  "memmap2",
  "mod_use",
@@ -878,8 +879,9 @@ checksum = "84a22b9f218b40614adcb3f4ff08b703773ad44fa9423e4e0d346d5db86e4ebc"
 
 [[package]]
 name = "uuid7"
-version = "0.3.5"
-source = "git+https://github.com/George-Miao/uuid7-rs.git?rev=d137971d63b9706b322dfce2bc93123258dd4c38#d137971d63b9706b322dfce2bc93123258dd4c38"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66f4b856277a2aa87a3fab983e617ebcd889f2d4e7022c7b0a7e20aba0fda097"
 dependencies = [
  "fstr",
  "rand",

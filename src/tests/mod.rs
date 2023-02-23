@@ -6,7 +6,7 @@ use tokio::time::sleep;
 
 use crate::TopicBuilder;
 
-mod log_format_test;
+mod format;
 
 #[tokio::test]
 async fn test_run() {
