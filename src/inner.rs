@@ -124,8 +124,11 @@ impl SharedMap {
     }
 
     #[inline]
-    pub fn finish(&self) {
+    pub fn finish(&self) -> Result<()> {
         self.finished.store(true, Ordering::Release);
+        self.map.flush_sync()?;
+
+        Ok(())
     }
 
     #[inline]

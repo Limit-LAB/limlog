@@ -163,16 +163,12 @@ impl Topic {
         let mut rem = None;
         loop {
             // Start receiving and save logs
-            eprintln!("BG: Begin");
+
             rem = appender.run(rem).await?;
-            eprintln!("BG: End");
-            appender.log.finish();
+            appender.log.finish()?;
 
             // Log file is full, create a new one
-            let (map, app) =
-                Self::make(&shared.conf, appender.event, appender.recv).tap_err_dbg(|e| {
-                    eprintln!("BG: Error: {:?}", e);
-                })?;
+            let (map, app) = Self::make(&shared.conf, appender.event, appender.recv)?;
 
             appender = app;
             shared.swap_map(map);
@@ -274,28 +270,19 @@ impl Stream for Reader {
         let this = self.project();
         let (map, mut notify) = (this.map, this.notify);
 
-        // eprintln!("Polled");
-
         loop {
             // We don't have enough data to decode a log. Check if the map is closed and if
             // any event has been emitted.
             if map.offset() - *this.read_at < MIN_LOG_SIZE {
-                // eprintln!("1");
-
                 // Current map is obsolete
                 if map.is_finished() {
-                    // eprintln!("2");
-
                     let current = this.shared.map();
 
                     // If the active map is finished, the background task is not making more
                     // progress (swap the map). Mark the reader as finished.
                     if current.is_finished() {
-                        // eprintln!("3");
                         return Poll::Ready(None);
                     }
-
-                    // eprintln!("4");
 
                     // Otherwise, swap it with the active one and reset the read
                     // pointer.
@@ -303,15 +290,11 @@ impl Stream for Reader {
                     *this.read_at = 0;
                 }
 
-                // eprintln!("5");
-
                 // Poll the event listener. If no event has been emitted, return
                 // `Poll::Pending`. If it's `Poll::Ready`, new data is available after
                 // last `offset` call, continue to decoding.
                 ready!(notify.as_mut().poll(cx));
                 std::mem::replace(&mut *notify, this.shared.subscribe()).discard();
-
-                // eprintln!("6");
             }
 
             let slice = map.slice(*this.read_at);
@@ -319,14 +302,12 @@ impl Stream for Reader {
             match try_decode::<Log>(&slice) {
                 // Successfully decoded a log. Advance the read pointer.
                 Ok(Some((log, read))) => {
-                    // eprintln!("7");
                     *this.read_at += read as usize;
                     return Poll::Ready(Some(Ok(log)));
                 }
 
                 // Error while decoding.
                 Err(e) => {
-                    // eprintln!("8");
                     return Poll::Ready(Some(Err(ErrorType::Bincode(e))));
                 }
 
@@ -334,7 +315,6 @@ impl Stream for Reader {
                 // to wait for the next chunk of data to be written. This behavior maybe changed to
                 // return an error in future.
                 Ok(None) => {
-                    // eprintln!("9");
                     std::mem::replace(&mut *notify, this.shared.subscribe()).discard();
                     ready!(notify.as_mut().poll(cx));
                 }

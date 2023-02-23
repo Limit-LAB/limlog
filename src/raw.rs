@@ -36,6 +36,10 @@ impl RawMap {
         self.raw.flush_async().map_err(Into::into)
     }
 
+    pub fn flush_sync(&self) -> Result<()> {
+        self.raw.flush().map_err(Into::into)
+    }
+
     pub fn flush_range(&self, offset: usize, len: usize) -> Result<()> {
         self.raw.flush_async_range(offset, len).map_err(Into::into)
     }
