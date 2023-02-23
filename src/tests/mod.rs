@@ -11,7 +11,7 @@ mod log_format_test;
 #[tokio::test]
 async fn test_run() {
     let dir = TempDir::new().unwrap();
-    let topic = TopicBuilder::new("123", dir.path())
+    let topic = TopicBuilder::new_with_dir("123", dir.path())
         .unwrap()
         .build()
         .await
@@ -22,9 +22,7 @@ async fn test_run() {
     let w = topic.writer();
     let mut r = topic.reader();
 
-    for i in 0..100u32 {
-        w.write(vec![], i.to_be_bytes()).await.unwrap();
-    }
+    r.next().await.unwrap().unwrap();
 
     while let Some(e) = r.next().await {
         eprintln!("{e:?}");

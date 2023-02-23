@@ -1,14 +1,15 @@
 // Features
+#![allow(incomplete_features)]
 #![feature(io_error_more)]
 #![feature(type_alias_impl_trait)]
+#![feature(generic_const_exprs)]
 
 pub mod consts;
 pub mod formats;
 
-mod error;
-mod inner;
-mod raw;
 mod util;
+
+mod_use::mod_use![error, inner, raw];
 
 #[cfg(test)]
 mod tests;
@@ -24,44 +25,61 @@ use std::{
 use event_listener::EventListener;
 use futures::{ready, Future, Stream};
 use kanal::SendFuture;
-use tap::Pipe;
+use tap::{Conv, Pipe};
 use tokio::{fs, task::JoinHandle};
 use uuid7::uuid7;
 
 use crate::{
     consts::MIN_LOG_SIZE,
     error::{ErrorType, Result},
-    formats::log::Log,
+    formats::Log,
     inner::{Appender, Shared, SharedMap, UniqueMap},
     util::try_decode,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TopicBuilder {
     topic: String,
     dir: PathBuf,
     log_size: usize,
     index_size: usize,
+    channel_size: usize,
 }
 
 impl TopicBuilder {
-    pub fn new(topic: impl Into<String>, dir: impl Into<PathBuf>) -> Result<Self> {
+    pub fn new(topic: impl Into<String>) -> Result<Self> {
+        Self::new_with_dir(topic, std::env::current_dir()?)
+    }
+
+    pub fn new_with_dir(topic: impl Into<String>, dir: impl Into<PathBuf>) -> Result<Self> {
         let dir = dir.into();
+
         if !dir.is_dir() {
-            return Err(ErrorType::Io(IoError::new(
-                IoErrorKind::NotADirectory,
-                dir.display().to_string(),
-            )));
+            return IoError::new(IoErrorKind::NotADirectory, dir.display().to_string())
+                .conv::<ErrorType>()
+                .pipe(Err);
         }
+
         let topic = topic.into();
         let dir = dir.join(&topic);
 
         Ok(Self {
             topic: topic.into(),
             dir: dir.into(),
-            log_size: 1 << 24,
-            index_size: 1 << 16,
+            log_size: 1 << 24,    // 16M
+            index_size: 1 << 16,  // 64k
+            channel_size: 1 << 4, // 16
         })
+    }
+
+    pub fn with_directory(mut self, dir: impl Into<PathBuf>) -> Result<Self> {
+        self.dir = dir.into();
+        if !self.dir.is_dir() {
+            return IoError::new(IoErrorKind::NotADirectory, self.dir.display().to_string())
+                .conv::<ErrorType>()
+                .pipe(Err);
+        }
+        Ok(self)
     }
 
     pub fn with_log_size(mut self, log_size: usize) -> Self {
@@ -90,19 +108,19 @@ pub struct Topic {
 }
 
 impl Topic {
-    pub fn builder(topic: impl Into<String>, dir: impl Into<PathBuf>) -> Result<TopicBuilder> {
-        TopicBuilder::new(topic, dir)
+    pub fn builder(topic: impl Into<String>) -> Result<TopicBuilder> {
+        TopicBuilder::new(topic)
     }
 
     pub async fn new(conf: TopicBuilder) -> Result<Self> {
-        let (send, recv) = kanal::bounded_async(1 << 4);
+        let (send, recv) = kanal::bounded_async(conf.channel_size);
 
         let dir = conf.topic_dir();
         fs::create_dir_all(&dir).await?;
 
-        let (log_map, appender) = Self::make_maps(&conf, recv.clone())?;
+        let (log_map, appender) = Self::make_maps(&conf, recv)?;
         let shared = Arc::new(Shared::new(conf, log_map));
-        let handle = tokio::spawn(Self::background(shared.clone(), appender, recv));
+        let handle = tokio::spawn(Self::background(shared.clone(), appender));
 
         Ok(Self {
             shared,
@@ -129,27 +147,18 @@ impl Topic {
         Ok((log_map, appender))
     }
 
-    async fn background(
-        shared: Arc<Shared>,
-        mut appender: Appender,
-        recv: kanal::AsyncReceiver<Log>,
-    ) -> Result<()> {
-        'o: loop {
-            eprintln!("Start");
+    async fn background(shared: Arc<Shared>, mut appender: Appender) -> Result<()> {
+        loop {
             // Start receiving and save logs
-            loop {
-                match appender.run().await {
-                    Ok(_) => unreachable!("Appender should never stop with Ok"),
-                    // Log file is full, create a new one
-                    Err(e) if matches!(e, ErrorType::LogFileFull) => break,
-                    // Unexpected error, stop the background task
-                    Err(e) => break 'o Err(e),
-                }
-            }
-            let (map, app) = Self::make_maps(&shared.conf, recv.clone())?;
+            appender.run().await?;
+
+            let (_, _, recv) = appender.into_parts();
+
+            // Log file is full, create a new one
+            let (map, app) = Self::make_maps(&shared.conf, recv)?;
 
             appender = app;
-            shared.store_map(map);
+            shared.swap_map(map);
         }
     }
 
@@ -172,15 +181,16 @@ impl Topic {
     }
 
     pub fn reader_at(&self, read_at: usize) -> Result<Reader> {
-        let shared = self.shared.clone();
-        let map = self.shared.map();
-        let offset = map.offset();
+        let offset = self.shared.offset();
         if read_at > offset {
             return Err(ErrorType::InvalidOffset {
                 maximum: offset,
                 got: read_at,
             });
         }
+
+        let shared = self.shared.clone();
+        let map = self.shared.map();
 
         Ok(Reader {
             read_at,
@@ -194,7 +204,7 @@ impl Topic {
         self.handle.abort();
     }
 
-    pub async fn wait_for_bg(self) -> Result<()> {
+    pub async fn join(self) -> Result<()> {
         self.handle.await.unwrap()?;
         Ok(())
     }
@@ -219,14 +229,18 @@ pin_project_lite::pin_project! {
     pub struct Reader {
         #[pin]
         notify: EventListener,
+        // Current read position
         read_at: usize,
+        // Map being reading, may not be the latest one
         map: Arc<SharedMap>,
+        // Up to date shared info
         shared: Arc<Shared>
-        // raw: MmapInner
     }
 }
 
 impl Reader {
+    // Get the unread bytes. This will start at the log boundary. (i.e. followed
+    // by a valid log or nothing)
     pub fn as_slice(&self) -> &[u8] {
         self.map.slice(self.read_at)
     }
@@ -237,21 +251,49 @@ impl Stream for Reader {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.project();
-        let (inner, mut notify) = (this.map, this.notify);
+        let (map, mut notify) = (this.map, this.notify);
 
         loop {
-            if inner.offset() - *this.read_at < MIN_LOG_SIZE {
+            // We don't have enough data to decode a log. Check if the map is closed and if
+            // any event has been emitted.
+            if map.offset() - *this.read_at < MIN_LOG_SIZE {
+                // Current map is obsolete
+                if map.is_finished() {
+                    let current = this.shared.map();
+
+                    // If the active map is finished, the background task is not making more
+                    // progress (swap the map). Mark the reader as finished.
+                    if current.is_finished() {
+                        return Poll::Ready(None);
+                    }
+
+                    // Otherwise, swap it with the active one and reset the read
+                    // pointer.
+                    *map = current;
+                    *this.read_at = 0;
+                }
+
+                // Poll the event listener. If no event has been emitted, return
+                // `Poll::Pending`. If it's `Poll::Ready`, new data is available after
+                // last `offset` call, continue to decoding.
                 ready!(notify.as_mut().poll(cx));
             }
 
-            let slice = inner.slice(*this.read_at);
+            let slice = map.slice(*this.read_at);
 
             match try_decode::<Log>(&slice) {
+                // Successfully decoded a log. Advance the read pointer.
                 Ok(Some((log, read))) => {
                     *this.read_at += read as usize;
                     return Poll::Ready(Some(Ok(log)));
                 }
+
+                // Error while decoding.
                 Err(e) => return Poll::Ready(Some(Err(ErrorType::Bincode(e)))),
+
+                // This should not happen. If it does, there's some problem with the writer, we need
+                // to wait for the next chunk of data to be written. This behavior maybe changed to
+                // return an error in future.
                 Ok(None) => {
                     std::mem::replace(&mut *notify, this.shared.subscribe()).discard();
                     ready!(notify.as_mut().poll(cx));

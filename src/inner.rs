@@ -2,7 +2,7 @@ use std::{
     path::Path,
     slice::SliceIndex,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
     },
 };
@@ -12,9 +12,10 @@ use bincode::Options;
 use event_listener::{Event, EventListener};
 
 use crate::{
-    error::{ErrorType, Result},
-    formats::log::{Header, Log, UuidIndex},
-    raw::Map,
+    consts::INDEX_SIZE,
+    error::Result,
+    formats::{Header, Log, UuidIndex},
+    raw::RawMap,
     util::{bincode_option, BincodeOptions},
     TopicBuilder,
 };
@@ -40,12 +41,16 @@ impl Shared {
         }
     }
 
-    pub fn store_map(&self, map: Arc<SharedMap>) {
-        self.map.store(map);
+    pub fn swap_map(&self, map: Arc<SharedMap>) -> Arc<SharedMap> {
+        self.map.swap(map)
     }
 
     pub fn map(&self) -> Arc<SharedMap> {
         self.map.load_full()
+    }
+
+    pub fn offset(&self) -> usize {
+        self.map.load().offset()
     }
 
     pub fn subscribe(&self) -> EventListener {
@@ -55,20 +60,26 @@ impl Shared {
 
 /// Shared map for reading concurrently and writing exclusively
 pub(crate) struct SharedMap {
-    map: Map,
+    map: RawMap,
     offset: AtomicUsize,
+    finished: AtomicBool,
 }
 
 impl SharedMap {
     pub fn new(dir: &Path, name: &str) -> Result<Self> {
-        let map = Map::new(
+        let map = RawMap::new(
             &dir.join(name).with_extension("limlog"),
             1 << 24,
             Header::LOG,
         )?;
         let offset = AtomicUsize::new(0);
+        let finished = AtomicBool::new(false);
 
-        Ok(Self { map, offset })
+        Ok(Self {
+            map,
+            offset,
+            finished,
+        })
     }
 
     /// Load the offset
@@ -107,14 +118,6 @@ impl SharedMap {
         unsafe { std::slice::from_raw_parts(self.map.as_ptr(), at) }
     }
 
-    /// Index the underlying map
-    unsafe fn index<I>(&self, index: I) -> &I::Output
-    where
-        I: SliceIndex<[u8]>,
-    {
-        &self.map.as_slice()[index]
-    }
-
     pub fn commit(&self, len: usize) -> Result<()> {
         self.map.flush_range(self.offset(), len)?;
         self.offset.fetch_add(len, Ordering::SeqCst);
@@ -124,12 +127,23 @@ impl SharedMap {
     #[inline]
     pub fn slice(&self, from: usize) -> &[u8] {
         // SAFETY: memory before `offset` are immutable and ready to be read
-        unsafe { self.index(from..self.offset()) }
+        unsafe { self.map.range(from, self.offset() - from) }
     }
 
     #[inline]
     pub fn remaining(&self) -> usize {
         self.map.len() - self.offset()
+    }
+
+    #[inline]
+    pub fn finish(&self) {
+        self.finished.store(true, Ordering::Release);
+    }
+
+    #[inline]
+    pub fn is_finished(&self) -> bool {
+        // Readers should see the file is finished after writer marks it so
+        self.finished.load(Ordering::Acquire)
     }
 }
 
@@ -139,15 +153,15 @@ impl Drop for SharedMap {
     }
 }
 
-/// Index
-pub struct UniqueMap {
-    map: Map,
+/// Index map for read and write exclusively
+pub(crate) struct UniqueMap {
+    map: RawMap,
     pos: usize,
 }
 
 impl UniqueMap {
-    pub(crate) fn new(dir: &Path, name: &str) -> Result<Self> {
-        let map = Map::new(
+    pub fn new(dir: &Path, name: &str) -> Result<Self> {
+        let map = RawMap::new(
             &dir.join(name).with_extension("idx"),
             1 << 14,
             Header::INDEX,
@@ -156,14 +170,20 @@ impl UniqueMap {
         Ok(Self { map, pos: 0 })
     }
 
-    pub(crate) fn push(&mut self, index: UuidIndex) -> Result<()> {
-        if self.pos + 24 > self.map.len() {
-            return Err(crate::error::ErrorType::IndexFileTooSmall);
-        }
+    /// If the index file is full. Returns true if it cannot handle one more
+    /// [`UuidIndex`]
+    pub fn is_full(&self) -> bool {
+        self.pos + INDEX_SIZE > self.map.len()
+    }
+
+    pub fn push(&mut self, index: UuidIndex) -> Result<()> {
+        debug_assert!(!self.is_full());
+
         // SAFETY: self is a mutable reference
-        let slice = unsafe { &mut self.map.as_mut_slice()[self.pos..self.pos + 24] };
+        let slice = unsafe { self.map.range_mut(self.pos, INDEX_SIZE) };
         index.write_to(slice.try_into().unwrap());
-        self.pos += 24;
+        self.map.flush_range(self.pos, INDEX_SIZE)?;
+        self.pos += INDEX_SIZE;
         Ok(())
     }
 }
@@ -185,15 +205,17 @@ impl Appender {
         Self { map, idx, recv }
     }
 
-    pub async fn run(mut self) -> Result<()> {
+    pub fn into_parts(self) -> (Arc<SharedMap>, UniqueMap, kanal::AsyncReceiver<Log>) {
+        (self.map, self.idx, self.recv)
+    }
+
+    pub async fn run(&mut self) -> Result<()> {
         let opt: BincodeOptions = bincode_option();
 
         loop {
             let log = self.recv.recv().await?;
             let len = opt.serialized_size(&log)? as usize;
-            if self.map.remaining() < len {
-                return Err(ErrorType::LogFileFull);
-            }
+
             let offset = self.map.offset() as _;
             // SAFETY: We are the only one accessing the mutable portion of mmap
             let buf = unsafe { self.map.mut_slice() };
@@ -204,6 +226,10 @@ impl Appender {
                 uuid: log.uuid,
                 offset,
             })?;
+            if self.map.remaining() < len || self.idx.is_full() {
+                self.map.finish();
+                return Ok(());
+            }
         }
     }
 }
