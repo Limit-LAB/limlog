@@ -1,6 +1,5 @@
 use std::{
     path::Path,
-    slice::SliceIndex,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
@@ -66,7 +65,7 @@ pub(crate) struct SharedMap {
 }
 
 impl SharedMap {
-    pub fn new(dir: &Path, name: &str) -> Result<Self> {
+    pub fn new(dir: &Path, name: &str, size: u64) -> Result<Self> {
         let map = RawMap::new(
             &dir.join(name).with_extension("limlog"),
             1 << 24,
@@ -82,52 +81,45 @@ impl SharedMap {
         })
     }
 
-    /// Load the offset
+    /// Load the offset with [`Ordering::Acquire`]
     #[inline(always)]
     pub fn offset(&self) -> usize {
-        self.offset.load(Ordering::SeqCst)
+        self.offset.load(Ordering::Acquire)
     }
 
-    /// Split the map into two slices, one immutable and one mutable, at the
-    /// given index. The index must be less than or equal to the length of the
-    /// map.
-    ///
-    /// # SAFETY
-    ///
-    /// Caller must guarantee that the mutable part is exclusive
-    unsafe fn split_to(&self, at: usize) -> (&[u8], &mut [u8]) {
-        assert!(at <= self.map.len());
-
-        let ptr = self.map.as_mut_ptr();
-
-        (
-            std::slice::from_raw_parts(ptr, at),
-            std::slice::from_raw_parts_mut(ptr.add(at), self.map.len() - at),
-        )
+    /// Load the offset with [`Ordering::Relaxed`]
+    #[inline(always)]
+    pub fn offset_relaxed(&self) -> usize {
+        self.offset.load(Ordering::Relaxed)
     }
 
     // SAFETY: Caller must guarantee that this is exclusive
-    unsafe fn mut_slice(&self) -> &mut [u8] {
+    #[inline]
+    pub unsafe fn mut_slice(&self) -> &mut [u8] {
         let at = self.offset();
+        debug_assert!(at <= self.map.len());
+
         std::slice::from_raw_parts_mut(self.map.as_mut_ptr().add(at), self.map.len() - at)
     }
 
-    fn read_half(&self) -> &[u8] {
+    /// Get the slice of the map from the given offset
+    ///
+    /// # Panic
+    ///
+    /// Panics if `from` is greater than the current offset
+    #[inline]
+    pub fn slice(&self, from: usize) -> &[u8] {
         let at = self.offset();
-        // SAFETY: Only chunks greater than offset are written to
-        unsafe { std::slice::from_raw_parts(self.map.as_ptr(), at) }
+        let from = from.min(at);
+
+        // SAFETY: memory before `offset` are immutable and ready to be read
+        unsafe { self.map.range(from, at - from) }
     }
 
     pub fn commit(&self, len: usize) -> Result<()> {
         self.map.flush_range(self.offset(), len)?;
         self.offset.fetch_add(len, Ordering::SeqCst);
         Ok(())
-    }
-
-    #[inline]
-    pub fn slice(&self, from: usize) -> &[u8] {
-        // SAFETY: memory before `offset` are immutable and ready to be read
-        unsafe { self.map.range(from, self.offset() - from) }
     }
 
     #[inline]
@@ -160,12 +152,8 @@ pub(crate) struct UniqueMap {
 }
 
 impl UniqueMap {
-    pub fn new(dir: &Path, name: &str) -> Result<Self> {
-        let map = RawMap::new(
-            &dir.join(name).with_extension("idx"),
-            1 << 14,
-            Header::INDEX,
-        )?;
+    pub fn new(dir: &Path, name: &str, size: u64) -> Result<Self> {
+        let map = RawMap::new(&dir.join(name).with_extension("idx"), size, Header::INDEX)?;
 
         Ok(Self { map, pos: 0 })
     }
@@ -242,12 +230,12 @@ fn test_map() {
     use crate::Log;
 
     let dir = tempfile::tempdir().unwrap();
-    let map = SharedMap::new(dir.path(), "123").unwrap();
+    let map = SharedMap::new(dir.path(), "123", 100).unwrap();
 
-    let (r, w) = unsafe { map.split_to(10) };
+    let (r, w) = unsafe { (map.slice(10), map.mut_slice()) };
 
-    assert_eq!(r.len(), 10);
-    println!("{:?}", &w[..100]);
+    assert_eq!(r.len(), 0);
+    assert_eq!(&[0; 100], &w[..100]);
 
     let l = Log {
         uuid: Uuid::MAX,
@@ -257,5 +245,10 @@ fn test_map() {
 
     bincode_option().serialize_into(&mut w[..], &l).unwrap();
 
-    println!("{:?}", &w[..100]);
+    let counter = [
+        255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 1, 0, 0, 0,
+        0, 0, 0, 0, 114, 1, 0, 0, 0, 0, 0, 0, 0, 191,
+    ];
+
+    assert_eq!(&counter[..], &w[..counter.len()]);
 }

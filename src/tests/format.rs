@@ -44,9 +44,9 @@ pub(crate) const INDEX2: [u8; 24] = [
 
 #[test]
 fn test_log_format() {
-    let (l1, 34) = try_decode(&LOG1[..]).unwrap().unwrap() else { panic!("Missmatched parsed length") };
-    let (l2, 34) = try_decode(&LOG2[..]).unwrap().unwrap() else { panic!("Missmatched parsed length") };
-    let (l3, 34) = try_decode(&LOG3[..]).unwrap().unwrap() else { panic!("Missmatched parsed length") };
+    let (l1, 34) = try_decode(&LOG1).unwrap().unwrap() else { panic!("Missmatched parsed length") };
+    let (l2, 34) = try_decode(&LOG2).unwrap().unwrap() else { panic!("Missmatched parsed length") };
+    let (l3, 34) = try_decode(&LOG3).unwrap().unwrap() else { panic!("Missmatched parsed length") };
 
     let idx1 = UuidIndex::from_bytes(&INDEX1);
     let idx2 = UuidIndex::from_bytes(&INDEX2);
