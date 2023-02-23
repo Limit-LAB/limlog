@@ -25,6 +25,7 @@ use std::{
 use event_listener::EventListener;
 use futures_core::{ready, Future, Stream};
 use kanal::SendFuture;
+use serde::{Deserialize, Serialize};
 use tap::{Conv, Pipe};
 use tokio::{fs, task::JoinHandle};
 use uuid7::uuid7;
@@ -37,13 +38,13 @@ use crate::{
     util::try_decode,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct TopicBuilder {
     topic: String,
     dir: PathBuf,
-    log_size: usize,
-    index_size: usize,
-    channel_size: usize,
+    log_size: u64,
+    index_size: u64,
+    channel_size: u64,
 }
 
 impl TopicBuilder {
@@ -82,13 +83,18 @@ impl TopicBuilder {
         Ok(self)
     }
 
-    pub fn with_log_size(mut self, log_size: usize) -> Self {
+    pub fn with_log_size(mut self, log_size: u64) -> Self {
         self.log_size = log_size;
         self
     }
 
-    pub fn with_index_size(mut self, index_size: usize) -> Self {
+    pub fn with_index_size(mut self, index_size: u64) -> Self {
         self.index_size = index_size;
+        self
+    }
+
+    pub fn with_channel_size(mut self, channel_size: u64) -> Self {
+        self.channel_size = channel_size;
         self
     }
 
@@ -113,12 +119,12 @@ impl Topic {
     }
 
     pub async fn new(conf: TopicBuilder) -> Result<Self> {
-        let (send, recv) = kanal::bounded_async(conf.channel_size);
+        let (send, recv) = kanal::bounded_async(conf.channel_size as usize);
 
         let dir = conf.topic_dir();
         fs::create_dir_all(&dir).await?;
 
-        let (log_map, appender) = Self::make_maps(&conf, recv)?;
+        let (log_map, appender) = Self::make(&conf, recv)?;
         let shared = Arc::new(Shared::new(conf, log_map));
         let handle = tokio::spawn(Self::background(shared.clone(), appender));
 
@@ -133,15 +139,15 @@ impl Topic {
         &self.shared.conf
     }
 
-    fn make_maps(
+    fn make(
         conf: &TopicBuilder,
         recv: kanal::AsyncReceiver<Log>,
     ) -> Result<(Arc<SharedMap>, Appender)> {
         let filename = util::uuid_now().encode();
         let dir = conf.topic_dir();
 
-        let log_map = SharedMap::new(&dir, filename.as_str())?.pipe(Arc::new);
-        let idx_map = UniqueMap::new(&dir, filename.as_str())?;
+        let log_map = SharedMap::new(&dir, filename.as_str(), conf.log_size)?.pipe(Arc::new);
+        let idx_map = UniqueMap::new(&dir, filename.as_str(), conf.index_size)?;
         let appender = Appender::new(log_map.clone(), idx_map, recv);
 
         Ok((log_map, appender))
@@ -155,7 +161,7 @@ impl Topic {
             let (_, _, recv) = appender.into_parts();
 
             // Log file is full, create a new one
-            let (map, app) = Self::make_maps(&shared.conf, recv)?;
+            let (map, app) = Self::make(&shared.conf, recv)?;
 
             appender = app;
             shared.swap_map(map);

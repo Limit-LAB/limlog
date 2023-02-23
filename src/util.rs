@@ -1,5 +1,4 @@
 use std::{
-    fmt::Debug,
     fs,
     io::Cursor,
     path::Path,
@@ -90,7 +89,9 @@ mod bincode_option_mod {
 
 pub use bincode_option_mod::{bincode_option, BincodeOptions};
 
-/// Try to decode from stream of bytes with bincode.
+/// Try to decode from stream of bytes with bincode. Notice that this takes
+/// `&[u8]` instead of `&mut &[u8]`, so cursor won't be updated. Instead, bytes
+/// read will be returned along with the deserialized value.
 ///
 /// # Retrun
 ///
@@ -98,9 +99,7 @@ pub use bincode_option_mod::{bincode_option, BincodeOptions};
 /// - If the buffer does not start with a valid `T`, return `None`. This means
 ///   either the buffer is not filled or it's corrupted
 /// - If any error happened, return `Err`.
-pub fn try_decode<T: DeserializeOwned + Debug>(
-    data: &[u8],
-) -> Result<Option<(T, u64)>, bincode::Error> {
+pub fn try_decode<T: DeserializeOwned>(data: &[u8]) -> Result<Option<(T, u64)>, bincode::Error> {
     if data.is_empty() {
         return Ok(None);
     }
@@ -112,8 +111,7 @@ pub fn try_decode<T: DeserializeOwned + Debug>(
     match res {
         Ok(val) => Ok(Some((val, cur.position() as _))),
         Err(e) => match *e {
-            // Buffer is not filled (yet), not an error. Leave the cursor untouched so that
-            // remaining bytes can be used in the next decode attempt.
+            // Buffer is not filled (yet), not an error
             bincode::ErrorKind::Io(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => Ok(None),
             _ => Err(e),
         },
