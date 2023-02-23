@@ -13,19 +13,13 @@ pub(crate) struct RawMap {
 
 impl RawMap {
     pub(crate) fn new(path: &Path, size: u64, header: Header) -> Result<Self> {
-        assert!(
-            size >= HEADER_SIZE as _,
-            "Size of mmap must be at least {} bytes",
-            HEADER_SIZE
-        );
-
         let file = File::options()
             .read(true)
             .write(true)
             .create(true)
             .open(path)?;
         file.try_lock_exclusive()?;
-        file.set_len(size)?;
+        file.set_len(size + HEADER_SIZE as u64)?;
         let raw = MmapOptions::new().map_raw(&file)?;
         let this = Self { raw, file };
         this.write_header(header);
@@ -40,6 +34,10 @@ impl RawMap {
 
     pub fn flush(&self) -> Result<()> {
         self.raw.flush_async().map_err(Into::into)
+    }
+
+    pub fn flush_sync(&self) -> Result<()> {
+        self.raw.flush().map_err(Into::into)
     }
 
     pub fn flush_range(&self, offset: usize, len: usize) -> Result<()> {
@@ -73,9 +71,9 @@ impl RawMap {
         })
     }
 
-    pub fn update_header(&self, func: impl FnOnce(Header) -> Header) {
-        let header = self.load_header();
-        func(header);
+    pub fn update_header(&self, func: impl FnOnce(&mut Header)) {
+        let mut header = self.load_header();
+        func(&mut header);
         self.write_header(header);
     }
 

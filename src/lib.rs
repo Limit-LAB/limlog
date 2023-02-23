@@ -22,11 +22,11 @@ use std::{
     task::{Context, Poll},
 };
 
-use event_listener::EventListener;
+use event_listener::{Event, EventListener};
 use futures_core::{ready, Future, Stream};
 use kanal::SendFuture;
 use serde::{Deserialize, Serialize};
-use tap::{Conv, Pipe};
+use tap::{Conv, Pipe, TapFallible};
 use tokio::{fs, task::JoinHandle};
 use uuid7::uuid7;
 
@@ -54,19 +54,15 @@ impl TopicBuilder {
 
     pub fn new_with_dir(topic: impl Into<String>, dir: impl Into<PathBuf>) -> Result<Self> {
         let dir = dir.into();
-
         if !dir.is_dir() {
             return IoError::new(IoErrorKind::NotADirectory, dir.display().to_string())
                 .conv::<ErrorType>()
                 .pipe(Err);
         }
 
-        let topic = topic.into();
-        let dir = dir.join(&topic);
-
         Ok(Self {
             topic: topic.into(),
-            dir: dir.into(),
+            dir,
             log_size: 1 << 24,    // 16M
             index_size: 1 << 16,  // 64k
             channel_size: 1 << 4, // 16
@@ -124,8 +120,9 @@ impl Topic {
         let dir = conf.topic_dir();
         fs::create_dir_all(&dir).await?;
 
-        let (log_map, appender) = Self::make(&conf, recv)?;
-        let shared = Arc::new(Shared::new(conf, log_map));
+        let event = Event::new().pipe(Arc::new);
+        let (log_map, appender) = Self::make(&conf, event.clone(), recv)?;
+        let shared = Arc::new(Shared::new(conf, event, log_map));
         let handle = tokio::spawn(Self::background(shared.clone(), appender));
 
         Ok(Self {
@@ -141,27 +138,37 @@ impl Topic {
 
     fn make(
         conf: &TopicBuilder,
+        event: Arc<Event>,
         recv: kanal::AsyncReceiver<Log>,
     ) -> Result<(Arc<SharedMap>, Appender)> {
-        let filename = util::uuid_now().encode();
+        let filename = uuid7().encode();
+
         let dir = conf.topic_dir();
 
         let log_map = SharedMap::new(&dir, filename.as_str(), conf.log_size)?.pipe(Arc::new);
         let idx_map = UniqueMap::new(&dir, filename.as_str(), conf.index_size)?;
-        let appender = Appender::new(log_map.clone(), idx_map, recv);
+        let appender = Appender {
+            log: log_map.clone(),
+            idx: idx_map,
+            event,
+            recv,
+        };
 
         Ok((log_map, appender))
     }
 
     async fn background(shared: Arc<Shared>, mut appender: Appender) -> Result<()> {
+        // Remaining log that wasn't saved due to lack of file space. Will be written to
+        // the next file.
+        let mut rem = None;
         loop {
             // Start receiving and save logs
-            appender.run().await?;
 
-            let (_, _, recv) = appender.into_parts();
+            rem = appender.run(rem).await?;
+            appender.log.finish()?;
 
             // Log file is full, create a new one
-            let (map, app) = Self::make(&shared.conf, recv)?;
+            let (map, app) = Self::make(&shared.conf, appender.event, appender.recv)?;
 
             appender = app;
             shared.swap_map(map);
@@ -250,6 +257,10 @@ impl Reader {
     pub fn as_slice(&self) -> &[u8] {
         self.map.slice(self.read_at)
     }
+
+    pub fn cursor(&self) -> usize {
+        self.read_at
+    }
 }
 
 impl Stream for Reader {
@@ -283,6 +294,7 @@ impl Stream for Reader {
                 // `Poll::Pending`. If it's `Poll::Ready`, new data is available after
                 // last `offset` call, continue to decoding.
                 ready!(notify.as_mut().poll(cx));
+                std::mem::replace(&mut *notify, this.shared.subscribe()).discard();
             }
 
             let slice = map.slice(*this.read_at);
@@ -295,7 +307,9 @@ impl Stream for Reader {
                 }
 
                 // Error while decoding.
-                Err(e) => return Poll::Ready(Some(Err(ErrorType::Bincode(e)))),
+                Err(e) => {
+                    return Poll::Ready(Some(Err(ErrorType::Bincode(e))));
+                }
 
                 // This should not happen. If it does, there's some problem with the writer, we need
                 // to wait for the next chunk of data to be written. This behavior maybe changed to
