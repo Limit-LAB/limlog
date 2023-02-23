@@ -7,7 +7,6 @@ use std::{
 };
 
 use bincode::Options;
-// use bytes::Buf;
 use serde::de::DeserializeOwned;
 use uuid7::Uuid;
 
@@ -84,8 +83,7 @@ mod bincode_option_mod {
     pub fn bincode_option() -> BincodeOptions {
         DefaultOptions::new()
             .with_fixint_encoding()
-            .with_big_endian()
-            // .reject_trailing_bytes()
+            .with_little_endian()
             .with_limit(1 << 12)
     }
 }

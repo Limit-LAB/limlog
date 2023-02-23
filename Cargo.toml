@@ -14,21 +14,18 @@ pin-project-lite = "0.2.9"
 tap              = "1.0.1"
 thiserror        = "1.0"
 
-futures  = { version = "0.3.26", default-features = false }
-kanal    = { version = "0.1.0-pre8", default-features = false, features = ["async"] }
 serde    = { version = "1", features = ["derive"] }
 smallvec = { version = "1.10", features = ["union", "const_new", "const_generics", "specialization"] }
-tokio    = { version = "1", default-features = false, features = ["fs", "rt"] }
+uuid7    = { version = "0.4.0", features = ["serde"] }
 
+futures-core = { version = "0.3.26", default-features = false }
+kanal        = { version = "0.1.0-pre8", default-features = false, features = ["async"] }
+tokio        = { version = "1", default-features = false, features = ["fs", "rt"] }
 
-[dependencies.uuid7]
-version  = "0.3.4"
-features = ["serde"]
-git      = "https://github.com/George-Miao/uuid7-rs.git"
-rev      = "d137971d63b9706b322dfce2bc93123258dd4c38"
 
 [dev-dependencies]
-tokio = { version = "1.25.0", features = ["full"] }
+tokio   = { version = "1.25.0", features = ["full"] }
+futures = { version = "0.3.26", default-features = false }
 
 criterion = "0.4.0"
 rand      = "0.8.5"

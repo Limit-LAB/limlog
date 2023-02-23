@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use uuid7::{uuid7, Uuid};
+use uuid7::Uuid;
 
 use crate::{
     consts::{HEADER_SIZE, INDEX_MAGIC, INDEX_SIZE, LOG_MAGIC},
@@ -8,6 +8,7 @@ use crate::{
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
 pub struct Log {
+    #[serde(with = "u128_little_endian")]
     pub uuid: Uuid,
 
     pub key: Vec<u8>,
@@ -58,7 +59,7 @@ impl Header {
 }
 
 /// Index of UUID
-#[derive(Serialize, Deserialize, Debug, Default, Copy, Clone, PartialEq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub(crate) struct UuidIndex {
     pub uuid: Uuid,
     pub offset: u64,
@@ -87,5 +88,33 @@ impl UuidIndex {
         let offset = u64::from_le_bytes(*chunk.sub::<16, INDEX_SIZE>());
 
         Self { uuid, offset }
+    }
+}
+
+mod u128_little_endian {
+    use std::fmt;
+
+    use serde::{de, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(v: &uuid7::Uuid, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_u128(u128::from_le_bytes(*v.as_bytes()))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<uuid7::Uuid, D::Error> {
+        d.deserialize_u128(U128LittleEndianVisitor)
+    }
+
+    struct U128LittleEndianVisitor;
+
+    impl<'de> de::Visitor<'de> for U128LittleEndianVisitor {
+        type Value = uuid7::Uuid;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(formatter, "a UUID representation")
+        }
+
+        fn visit_u128<E: de::Error>(self, value: u128) -> Result<Self::Value, E> {
+            Ok(Self::Value::from(value.to_le_bytes()))
+        }
     }
 }

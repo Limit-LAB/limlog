@@ -23,7 +23,7 @@ use std::{
 };
 
 use event_listener::EventListener;
-use futures::{ready, Future, Stream};
+use futures_core::{ready, Future, Stream};
 use kanal::SendFuture;
 use tap::{Conv, Pipe};
 use tokio::{fs, task::JoinHandle};
