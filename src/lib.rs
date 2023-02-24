@@ -14,10 +14,11 @@
 pub mod consts;
 pub mod formats;
 
-mod_use::mod_use![error, util];
+mod_use::mod_use![error];
 
 mod inner;
 mod raw;
+mod util;
 
 use std::{
     io::{Error as IoError, ErrorKind as IoErrorKind},
@@ -37,10 +38,12 @@ use tokio::{fs, task::JoinHandle};
 use tracing::{instrument, trace};
 use uuid7::uuid7;
 
+pub use crate::util::{bincode_option, try_decode, BincodeOptions};
 use crate::{
     consts::{DEFAULT_CHANNEL_SIZE, DEFAULT_INDEX_SIZE, DEFAULT_LOG_SIZE, MIN_LOG_SIZE},
     formats::Log,
     inner::UniqueMap,
+    util::Discard,
 };
 
 #[must_use]

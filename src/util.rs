@@ -30,7 +30,7 @@ impl ToTime for Uuid {
 }
 
 /// Workaround for rust resolving `BincodeOptions` to two different types
-#[doc(hidden)]
+
 mod bincode_option_mod {
     use bincode::{DefaultOptions, Options};
 
@@ -45,7 +45,6 @@ mod bincode_option_mod {
     }
 }
 
-#[doc(hidden)]
 pub use bincode_option_mod::{bincode_option, BincodeOptions};
 
 /// Try to decode from stream of bytes with bincode. Notice that this takes
@@ -58,7 +57,7 @@ pub use bincode_option_mod::{bincode_option, BincodeOptions};
 /// - If the buffer does not start with a valid `T`, return `None`. This means
 ///   either the buffer is not filled or it's corrupted
 /// - If any error happened, return `Err`.
-#[doc(hidden)]
+
 pub fn try_decode<T: DeserializeOwned>(data: &[u8]) -> Result<Option<(T, u64)>, bincode::Error> {
     if data.is_empty() {
         return Ok(None);
@@ -78,7 +77,7 @@ pub fn try_decode<T: DeserializeOwned>(data: &[u8]) -> Result<Option<(T, u64)>, 
     }
 }
 
-pub(crate) trait SubArray {
+pub trait SubArray {
     const LEN: usize;
     type T;
 
@@ -88,7 +87,7 @@ pub(crate) trait SubArray {
         Bool<{ R >= L }>: True;
 }
 
-pub(crate) trait SubArrayMut: SubArray {
+pub trait SubArrayMut: SubArray {
     fn sub_mut<const L: usize, const R: usize>(&mut self) -> &mut [Self::T; R - L]
     where
         Bool<{ Self::LEN >= R }>: True,
@@ -119,9 +118,9 @@ impl<T, const LEN: usize> SubArrayMut for [T; LEN] {
     }
 }
 
-pub(crate) trait True {}
+pub trait True {}
 
-pub(crate) struct Bool<const B: bool>;
+pub struct Bool<const B: bool>;
 
 impl True for Bool<true> {}
 
@@ -138,7 +137,7 @@ fn test_subarray() {
     // a.sub::<13, 12>();
 }
 
-pub(crate) trait Discard: Sized {
+pub trait Discard: Sized {
     fn drop(self) {}
 }
 
