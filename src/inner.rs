@@ -28,7 +28,7 @@ pub(crate) struct Shared {
     /// Pointer to the active map. This is rarely changed and is only changed
     /// when one map is full and a new map is created. Readers should keep a
     /// copy of the pointer to the map when created so creating new map
-    /// won't interupt existing maps. When readers found EOF, they should
+    /// won't interrupt existing maps. When readers found EOF, they should
     /// clone this pointer and read from the new map.
     map: ArcSwap<SharedMap>,
 }
