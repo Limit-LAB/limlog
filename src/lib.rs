@@ -6,7 +6,6 @@
 #![allow(
     incomplete_features,
     clippy::missing_errors_doc,
-    clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
     clippy::module_name_repetitions,
     clippy::must_use_candidate
