@@ -123,7 +123,7 @@ impl SharedMap {
 
     #[inline]
     pub fn remaining(&self) -> usize {
-        self.map.len() - self.offset()
+        self.map.len() - self.offset_relaxed()
     }
 
     #[inline]
