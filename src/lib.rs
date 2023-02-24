@@ -296,7 +296,7 @@ impl Stream for Reader {
 
             let slice = map.slice(*this.read_at);
 
-            match try_decode::<Log>(&slice) {
+            match try_decode::<Log>(slice) {
                 // Successfully decoded a log. Advance the read pointer.
                 Ok(Some((log, read))) => {
                     *this.read_at += read as usize;

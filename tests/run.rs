@@ -1,6 +1,6 @@
 use std::pin::pin;
 
-use futures::{future::select, StreamExt};
+use futures::future::select;
 use limlog::TopicBuilder;
 use tempfile::TempDir;
 use tokio::signal::ctrl_c;

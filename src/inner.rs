@@ -94,6 +94,7 @@ impl SharedMap {
 
     // SAFETY: Caller must guarantee that this is exclusive
     #[inline]
+    #[allow(clippy::mut_from_ref)]
     pub unsafe fn mut_slice(&self) -> &mut [u8] {
         let at = self.offset();
         debug_assert!(at <= self.map.len());
