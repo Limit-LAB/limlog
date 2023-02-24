@@ -30,6 +30,7 @@ impl ToTime for Uuid {
 }
 
 /// Workaround for rust resolving `BincodeOptions` to two different types
+
 mod bincode_option_mod {
     use bincode::{DefaultOptions, Options};
 
@@ -56,6 +57,7 @@ pub use bincode_option_mod::{bincode_option, BincodeOptions};
 /// - If the buffer does not start with a valid `T`, return `None`. This means
 ///   either the buffer is not filled or it's corrupted
 /// - If any error happened, return `Err`.
+
 pub fn try_decode<T: DeserializeOwned>(data: &[u8]) -> Result<Option<(T, u64)>, bincode::Error> {
     if data.is_empty() {
         return Ok(None);
