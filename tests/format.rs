@@ -1,10 +1,12 @@
 use bincode::Options;
+use limlog::{
+    bincode_option,
+    formats::{Log, UuidIndex},
+    try_decode,
+};
 use uuid7::Uuid;
 
-use crate::{
-    formats::{Log, UuidIndex},
-    util::{bincode_option, to_uuid, try_decode},
-};
+mod_use::mod_use!(common);
 
 pub(crate) const LOG1: [u8; 34] = [
     0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
