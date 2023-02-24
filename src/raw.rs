@@ -8,7 +8,7 @@ use crate::{consts::HEADER_SIZE, error::Result, formats::Header};
 
 /// A wrapper for [`MmapRaw`], with a 16-byte header.
 #[derive(Debug)]
-pub(crate) struct RawMap {
+pub struct RawMap {
     raw: MmapRaw,
     file: File,
 }
@@ -30,7 +30,7 @@ impl RawMap {
         Ok(this)
     }
 
-    pub fn advice_write(&self, offset: usize, len: usize) -> Result<()> {
+    pub fn advice_write(&self, _offset: usize, _len: usize) -> Result<()> {
         // #[cfg(unix)]
         // self.raw.advise_range(Advice:: offset, len).map_err(Into::into)
         todo!()
@@ -48,13 +48,17 @@ impl RawMap {
         self.raw.flush_async_range(offset, len).map_err(Into::into)
     }
 
-    pub fn file(&self) -> &File {
+    pub const fn file(&self) -> &File {
         &self.file
     }
 
     pub fn len(&self) -> usize {
         // Offset by size of header
         self.raw.len() - HEADER_SIZE
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn as_ptr(&self) -> *const u8 {
@@ -67,6 +71,7 @@ impl RawMap {
         unsafe { self.raw.as_mut_ptr().add(HEADER_SIZE) }
     }
 
+    #[allow(clippy::missing_panics_doc)]
     pub fn load_header(&self) -> Header {
         Header::from_bytes(unsafe {
             &std::slice::from_raw_parts(self.raw.as_ptr(), HEADER_SIZE)

@@ -6,7 +6,7 @@ use crate::{
     util::SubArray,
 };
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq, Eq)]
 pub struct Log {
     #[serde(with = "uuid_u128_little_endian")]
     pub uuid: Uuid,
@@ -16,18 +16,18 @@ pub struct Log {
 }
 
 #[repr(C, align(8))]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub struct Header {
     pub magic_number: [u8; 8],
     pub attributes: [u8; 8],
 }
 
 impl Header {
-    pub const INDEX: Header = Header {
+    pub const INDEX: Self = Self {
         magic_number: *INDEX_MAGIC,
         attributes: [0u8; 8],
     };
-    pub const LOG: Header = Header {
+    pub const LOG: Self = Self {
         magic_number: *LOG_MAGIC,
         attributes: [0u8; 8],
     };
@@ -38,20 +38,35 @@ impl Header {
         bytes
     }
 
+    /// # Panics
+    ///
+    /// Panics if `buf.len() < 16`.
     pub fn write_to(&self, buf: &mut [u8]) {
         assert!(buf.len() >= 16);
         unsafe {
             std::ptr::copy_nonoverlapping(
-                self as *const Self as *const u8,
+                (self as *const Self).cast(),
                 buf.as_mut_ptr(),
                 HEADER_SIZE,
             );
         }
     }
+
+    pub fn from_bytes(chunk: &[u8; 16]) -> Self {
+        let mut header = Self::default();
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                chunk.as_ptr(),
+                std::ptr::addr_of_mut!(header).cast(),
+                16,
+            );
+        }
+        header
+    }
 }
 
 /// Index of UUID
-#[derive(Debug, Default, Copy, Clone, PartialEq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct UuidIndex {
     pub uuid: Uuid,
     pub offset: u64,

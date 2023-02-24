@@ -1,3 +1,5 @@
+#![allow(clippy::inline_always)]
+
 use std::{
     path::Path,
     sync::{
@@ -21,7 +23,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub(crate) struct Shared {
+pub struct Shared {
     pub conf: TopicBuilder,
     pub event: Event,
 
@@ -61,7 +63,7 @@ impl Shared {
 
 /// Shared map for reading concurrently and writing exclusively
 #[derive(Debug)]
-pub(crate) struct SharedMap {
+pub struct SharedMap {
     map: RawMap,
     offset: AtomicUsize,
     finished: AtomicBool,
@@ -92,8 +94,10 @@ impl SharedMap {
         self.offset.load(Ordering::Relaxed)
     }
 
-    // SAFETY: Caller must guarantee that this is exclusive
+    /// # Safety
+    /// Caller must guarantee that this is exclusive
     #[inline]
+    #[allow(clippy::mut_from_ref)]
     pub unsafe fn mut_slice(&self) -> &mut [u8] {
         let at = self.offset();
         debug_assert!(at <= self.map.len());
@@ -149,7 +153,7 @@ impl Drop for SharedMap {
 
 /// Index map for read and write exclusively
 #[derive(Debug)]
-pub(crate) struct UniqueMap {
+pub struct UniqueMap {
     map: RawMap,
     pos: usize,
 }
@@ -167,6 +171,7 @@ impl UniqueMap {
         self.pos + INDEX_SIZE > self.map.len()
     }
 
+    #[allow(clippy::missing_panics_doc)]
     pub fn push(&mut self, index: UuidIndex) -> Result<()> {
         debug_assert!(!self.is_full());
 
@@ -186,7 +191,7 @@ impl Drop for UniqueMap {
 }
 
 #[derive(Debug)]
-pub(crate) struct Appender {
+pub struct Appender {
     pub log: Arc<SharedMap>,
     pub idx: UniqueMap,
     pub recv: kanal::AsyncReceiver<Log>,
@@ -200,14 +205,14 @@ impl Appender {
         let opt: BincodeOptions = bincode_option();
 
         if let Some(log) = rem.take() {
-            if let Some(rem) = self.write_one(&opt, log, event)? {
+            if let Some(rem) = self.write_one(opt, log, event)? {
                 return Ok(Some(rem));
             }
         }
 
         loop {
             let log = self.recv.recv().await?;
-            if let Some(rem) = self.write_one(&opt, log, event)? {
+            if let Some(rem) = self.write_one(opt, log, event)? {
                 return Ok(Some(rem));
             }
 
@@ -218,7 +223,7 @@ impl Appender {
         }
     }
 
-    fn write_one(&mut self, opt: &BincodeOptions, log: Log, event: &Event) -> Result<Option<Log>> {
+    fn write_one(&mut self, opt: BincodeOptions, log: Log, event: &Event) -> Result<Option<Log>> {
         let len = opt.serialized_size(&log)? as usize;
 
         if self.log.remaining() < len || self.idx.is_full() {
