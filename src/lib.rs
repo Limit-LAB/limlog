@@ -244,11 +244,10 @@ pub struct Writer {
 }
 
 impl Writer {
-    pub fn write(&self, key: impl Into<Vec<u8>>, value: impl Into<Vec<u8>>) -> SendFuture<'_, Log> {
+    pub fn write(&self, body: impl Into<Vec<u8>>) -> SendFuture<'_, Log> {
         self.send.send(Log {
             uuid: uuid7(),
-            key: key.into(),
-            value: value.into(),
+            body: body.into(),
         })
     }
 }

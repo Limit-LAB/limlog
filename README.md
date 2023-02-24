@@ -21,13 +21,11 @@
 
 - log
 
-| Field              | Size            |
-| ------------------ | --------------- |
-| uuid               | 16 bytes        |
-| key_len (u64 LE)   | 8 bytes         |
-| key                | key_len bytes   |
-| value_len (u64 LE) | 8 bytes         |
-| value              | value_len bytes |
+| Field             | Size           |
+| ----------------- | -------------- |
+| uuid              | 16 bytes       |
+| body_len (u64 LE) | 8 bytes        |
+| body              | body_len bytes |
 
 ### .idx
 
@@ -40,7 +38,7 @@
 
 - index item
 
-| Field               | Size     |
-| ------------------- | -------- |
-| uuid                | 16 bytes |
-| offset (u64 LE)     | 8 bytes  |
+| Field           | Size     |
+| --------------- | -------- |
+| uuid            | 16 bytes |
+| offset (u64 LE) | 8 bytes  |

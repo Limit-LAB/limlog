@@ -8,29 +8,23 @@ use uuid7::Uuid;
 
 mod_use::mod_use!(common);
 
-pub(crate) const LOG1: [u8; 34] = [
+pub(crate) const LOG1: [u8; 25] = [
     0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, // uuid
-    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // key length
-    0x01, // key
-    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // value length
-    0x0A, // value
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // body length
+    0x0A, // body
 ];
-pub(crate) const LOG2: [u8; 34] = [
+pub(crate) const LOG2: [u8; 25] = [
     0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, // uuid
-    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // key length
-    0x02, // key
-    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // value length
-    0x0B, // value
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // body length
+    0x0B, // body
 ];
-pub(crate) const LOG3: [u8; 34] = [
+pub(crate) const LOG3: [u8; 25] = [
     0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, // uuid
-    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // key length
-    0x03, // key
-    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // value length
-    0x0C, // value
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // body length
+    0x0C, // body
 ];
 
 pub(crate) const INDEX1: [u8; 24] = [
@@ -46,9 +40,9 @@ pub(crate) const INDEX2: [u8; 24] = [
 
 #[test]
 fn test_log_format() {
-    let (l1, 34) = try_decode(&LOG1).unwrap().unwrap() else { panic!("Missmatched parsed length") };
-    let (l2, 34) = try_decode(&LOG2).unwrap().unwrap() else { panic!("Missmatched parsed length") };
-    let (l3, 34) = try_decode(&LOG3).unwrap().unwrap() else { panic!("Missmatched parsed length") };
+    let (l1, 25) = try_decode(&LOG1).unwrap().unwrap() else { panic!("Missmatched parsed length") };
+    let (l2, 25) = try_decode(&LOG2).unwrap().unwrap() else { panic!("Missmatched parsed length") };
+    let (l3, 25) = try_decode(&LOG3).unwrap().unwrap() else { panic!("Missmatched parsed length") };
 
     let idx1 = UuidIndex::from_bytes(&INDEX1);
     let idx2 = UuidIndex::from_bytes(&INDEX2);
@@ -56,24 +50,21 @@ fn test_log_format() {
     assert_eq!(
         Log {
             uuid: to_uuid(1, 0),
-            key: vec![1],
-            value: vec![10]
+            body: vec![10]
         },
         l1
     );
     assert_eq!(
         Log {
             uuid: to_uuid(2, 0),
-            key: vec![2],
-            value: vec![11]
+            body: vec![11]
         },
         l2
     );
     assert_eq!(
         Log {
             uuid: to_uuid(3, 0),
-            key: vec![3],
-            value: vec![12]
+            body: vec![12]
         },
         l3
     );
@@ -98,8 +89,7 @@ fn test_log_format() {
 fn test_ser() {
     let l1 = Log {
         uuid: Uuid::MAX,
-        key: vec![1, 1, 4, 5, 1, 4],
-        value: vec![1, 1, 1, 1, 1, 1, 1, 1],
+        body: vec![1, 1, 1, 1, 1, 1, 1, 1],
     };
     let opt = bincode_option();
     let len = opt.serialized_size(&l1).unwrap() as usize;

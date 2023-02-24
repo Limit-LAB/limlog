@@ -29,7 +29,7 @@ async fn test_run() {
 
     tokio::spawn(async move {
         loop {
-            w.write("hello", "world").await.unwrap();
+            w.write("hello").await.unwrap();
         }
     });
 
