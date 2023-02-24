@@ -23,7 +23,7 @@ async fn test_run() {
     info!("{:?}", topic.config());
 
     let w = topic.writer();
-    let mut r = topic.reader();
+    let r = topic.reader();
 
     info!("{}", r.cursor());
 
@@ -32,8 +32,6 @@ async fn test_run() {
             w.write("hello", "world").await.unwrap();
         }
     });
-
-    tokio::spawn(async move { while let Some(_) = r.next().await {} });
 
     select(
         pin!(ctrl_c()),
