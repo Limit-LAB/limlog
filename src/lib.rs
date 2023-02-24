@@ -34,7 +34,10 @@ use tracing::{instrument, trace};
 pub use util::{bincode_option, BincodeOptions};
 use uuid7::uuid7;
 
-use crate::{consts::MIN_LOG_SIZE, formats::Log};
+use crate::{
+    consts::{DEFAULT_CHANNEL_SIZE, DEFAULT_INDEX_SIZE, DEFAULT_LOG_SIZE, MIN_LOG_SIZE},
+    formats::Log,
+};
 
 #[must_use]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -62,9 +65,9 @@ impl TopicBuilder {
         Ok(Self {
             topic: topic.into(),
             dir,
-            log_size: 1 << 24,    // 16M
-            index_size: 1 << 16,  // 64k
-            channel_size: 1 << 4, // 16
+            log_size: DEFAULT_LOG_SIZE,
+            index_size: DEFAULT_INDEX_SIZE,
+            channel_size: DEFAULT_CHANNEL_SIZE,
         })
     }
 
