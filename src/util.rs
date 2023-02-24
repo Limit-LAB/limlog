@@ -8,7 +8,7 @@ use serde::de::DeserializeOwned;
 use uuid7::Uuid;
 
 pub trait ToTime {
-    /// Retrieve the [SystemTime] of the object.
+    /// Retrieve the [`SystemTime`] of the object.
     fn to_system_time(&self) -> SystemTime;
 
     /// Retrieve the timestamp of the object.
@@ -35,7 +35,7 @@ mod bincode_option_mod {
 
     pub type BincodeOptions = impl Options + Copy;
 
-    #[inline(always)]
+    #[inline]
     pub fn bincode_option() -> BincodeOptions {
         DefaultOptions::new()
             .with_fixint_encoding()

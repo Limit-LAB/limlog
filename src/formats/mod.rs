@@ -12,9 +12,7 @@ mod format_invariants {
 
         use crate::formats::log::Header;
 
-        const fn assert_is_copy<T: Copy>() {
-            _ = std::marker::PhantomData::<T>;
-        }
+        const fn assert_is_copy<T: Copy>() {}
 
         // The header must be `HEADER_SIZE` bytes.
         assert!(size_of::<Header>() == HEADER_SIZE);

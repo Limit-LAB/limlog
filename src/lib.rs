@@ -1,9 +1,16 @@
 #![doc = include_str!("../README.md")]
 // Features
-#![allow(incomplete_features)]
-#![feature(io_error_more)]
-#![feature(type_alias_impl_trait)]
-#![feature(generic_const_exprs)]
+#![feature(type_alias_impl_trait, generic_const_exprs, io_error_more)]
+// Lints
+#![warn(clippy::nursery, clippy::pedantic)]
+#![allow(
+    incomplete_features,
+    clippy::missing_errors_doc,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::module_name_repetitions,
+    clippy::must_use_candidate
+)]
 
 pub mod consts;
 pub mod formats;
@@ -30,13 +37,14 @@ use uuid7::uuid7;
 
 use crate::{consts::MIN_LOG_SIZE, formats::Log};
 
+#[must_use]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct TopicBuilder {
     topic: String,
     dir: PathBuf,
     log_size: u64,
     index_size: u64,
-    channel_size: u64,
+    channel_size: u32,
 }
 
 impl TopicBuilder {
@@ -71,17 +79,17 @@ impl TopicBuilder {
         Ok(self)
     }
 
-    pub fn with_log_size(mut self, log_size: u64) -> Self {
+    pub const fn with_log_size(mut self, log_size: u64) -> Self {
         self.log_size = log_size;
         self
     }
 
-    pub fn with_index_size(mut self, index_size: u64) -> Self {
+    pub const fn with_index_size(mut self, index_size: u64) -> Self {
         self.index_size = index_size;
         self
     }
 
-    pub fn with_channel_size(mut self, channel_size: u64) -> Self {
+    pub const fn with_channel_size(mut self, channel_size: u32) -> Self {
         self.channel_size = channel_size;
         self
     }
@@ -107,7 +115,7 @@ impl Topic {
     }
 
     pub async fn new(conf: TopicBuilder) -> Result<Self> {
-        let (send, recv) = kanal::bounded_async(conf.channel_size as usize);
+        let (send, recv) = kanal::bounded_async(conf.channel_size as _);
 
         let dir = conf.topic_dir();
         fs::create_dir_all(&dir).await?;
@@ -214,12 +222,13 @@ impl Topic {
         self.handle.abort();
     }
 
+    /// # Panics
+    /// Panics if the background task panicked
     pub async fn join(self) -> Result<()> {
         self.handle.await.unwrap()?;
         Ok(())
     }
 }
-
 #[derive(Clone, Debug)]
 pub struct Writer {
     send: kanal::AsyncSender<Log>,
@@ -255,7 +264,7 @@ impl Reader {
         self.map.slice(self.read_at)
     }
 
-    pub fn cursor(&self) -> usize {
+    pub const fn cursor(&self) -> usize {
         self.read_at
     }
 }
