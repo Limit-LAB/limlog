@@ -14,7 +14,10 @@
 pub mod consts;
 pub mod formats;
 
-mod_use::mod_use![error, inner, raw, util];
+mod_use::mod_use![error, util];
+
+mod inner;
+mod raw;
 
 use std::{
     io::{Error as IoError, ErrorKind as IoErrorKind},
@@ -26,17 +29,18 @@ use std::{
 
 use event_listener::{Event, EventListener};
 use futures_core::{ready, Future, Stream};
+use inner::{Appender, Shared, SharedMap};
 use kanal::SendFuture;
 use serde::{Deserialize, Serialize};
 use tap::{Conv, Pipe};
 use tokio::{fs, task::JoinHandle};
 use tracing::{instrument, trace};
-pub use util::{bincode_option, BincodeOptions};
 use uuid7::uuid7;
 
 use crate::{
     consts::{DEFAULT_CHANNEL_SIZE, DEFAULT_INDEX_SIZE, DEFAULT_LOG_SIZE, MIN_LOG_SIZE},
     formats::Log,
+    inner::UniqueMap,
 };
 
 #[must_use]
