@@ -1,7 +1,5 @@
 use std::{
-    fs,
     io::Cursor,
-    path::Path,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -29,47 +27,6 @@ impl ToTime for Uuid {
         bytes[2..].copy_from_slice(&self.as_bytes()[..6]);
         u64::from_be_bytes(bytes)
     }
-}
-
-#[inline]
-pub fn uuid_now() -> Uuid {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis();
-
-    to_uuid(now as _, 0)
-}
-
-#[inline]
-pub fn to_uuid(ts: u64, fill: u8) -> Uuid {
-    let mut uuid = [fill; 16];
-    uuid[..6].copy_from_slice(&ts.to_be_bytes()[2..8]);
-    Uuid::from(uuid)
-}
-
-// scan the log groups in the given path
-pub fn log_groups(log_dir: impl AsRef<Path>) -> Vec<Uuid> {
-    let Ok(dirs) = fs::read_dir(log_dir.as_ref()) else {
-        return Vec::new();
-    };
-
-    dirs.into_iter()
-        .flatten()
-        .filter_map(|entry| {
-            let path = entry.path();
-
-            (path.is_file() && path.extension().unwrap_or_default().eq("limlog")).then_some(())?;
-
-            let uuid = path.file_stem()?.to_str()?.parse::<Uuid>().ok()?;
-
-            log_dir
-                .as_ref()
-                .join(format!("{uuid}.idx"))
-                .is_file()
-                .then_some(uuid)
-        })
-        .collect()
 }
 
 /// Workaround for rust resolving `BincodeOptions` to two different types
@@ -177,3 +134,9 @@ fn test_subarray() {
     // This will fail too
     // a.sub::<13, 12>();
 }
+
+pub trait Discard: Sized {
+    fn drop(self) {}
+}
+
+impl<T> Discard for T {}

@@ -2,7 +2,7 @@ use std::{fs::File, path::Path};
 
 use fs2::FileExt;
 use memmap2::{MmapOptions, MmapRaw};
-use tracing::debug;
+use tracing::trace;
 
 use crate::{consts::HEADER_SIZE, error::Result, formats::Header};
 
@@ -15,6 +15,8 @@ pub(crate) struct RawMap {
 
 impl RawMap {
     pub(crate) fn new(path: &Path, size: u64, header: Header) -> Result<Self> {
+        trace!(?path, size, "Opening mmap");
+
         let file = File::options()
             .read(true)
             .write(true)
@@ -98,7 +100,7 @@ impl RawMap {
     }
 
     pub fn close(&self, final_len: u64) -> Result<()> {
-        debug!(final_len, map = ?self, "Closing mmap");
+        trace!(final_len, map = ?self, "Closing mmap");
         // Unlock and truncate even if flush failed
         self.raw
             .flush()

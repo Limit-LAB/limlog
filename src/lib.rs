@@ -1,3 +1,5 @@
+// Features only used in test
+#![cfg_attr(test, feature(cursor_remaining))]
 // Features
 #![allow(incomplete_features)]
 #![feature(io_error_more)]
@@ -7,12 +9,7 @@
 pub mod consts;
 pub mod formats;
 
-mod util;
-
-mod_use::mod_use![error, inner, raw];
-
-#[cfg(test)]
-mod tests;
+mod_use::mod_use![error, inner, raw, util];
 
 use std::{
     io::{Error as IoError, ErrorKind as IoErrorKind},
@@ -28,16 +25,11 @@ use kanal::SendFuture;
 use serde::{Deserialize, Serialize};
 use tap::{Conv, Pipe};
 use tokio::{fs, task::JoinHandle};
-use tracing::instrument;
+use tracing::{instrument, trace};
+pub use util::{bincode_option, BincodeOptions};
 use uuid7::uuid7;
 
-use crate::{
-    consts::MIN_LOG_SIZE,
-    error::{ErrorType, Result},
-    formats::Log,
-    inner::{Appender, Shared, SharedMap, UniqueMap},
-    util::try_decode,
-};
+use crate::{consts::MIN_LOG_SIZE, formats::Log};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct TopicBuilder {
@@ -146,6 +138,8 @@ impl Topic {
 
         let dir = conf.topic_dir();
 
+        trace!(?dir, id = %filename, "Rolling");
+
         let log_map = SharedMap::new(&dir, filename.as_str(), conf.log_size)?.pipe(Arc::new);
         let idx_map = UniqueMap::new(&dir, filename.as_str(), conf.index_size)?;
         let appender = Appender {
@@ -166,10 +160,20 @@ impl Topic {
         loop {
             // Start receiving and save logs
             rem = appender.run(rem).await?;
-            appender.log.finish()?;
+            let Appender {
+                log,
+                event,
+                recv,
+                idx,
+            } = appender;
+
+            // Close the log file and flush to disk
+            idx.drop();
+
+            log.finish()?;
 
             // Log file is full, create a new one
-            let (map, app) = Self::make(&shared.conf, appender.event, appender.recv)?;
+            let (map, app) = Self::make(&shared.conf, event, recv)?;
 
             appender = app;
             shared.swap_map(map);

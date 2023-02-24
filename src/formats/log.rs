@@ -60,7 +60,7 @@ impl Header {
 
 /// Index of UUID
 #[derive(Debug, Default, Copy, Clone, PartialEq)]
-pub(crate) struct UuidIndex {
+pub struct UuidIndex {
     pub uuid: Uuid,
     pub offset: u64,
 }
