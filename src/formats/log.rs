@@ -8,7 +8,7 @@ use crate::{
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
 pub struct Log {
-    #[serde(with = "u128_little_endian")]
+    #[serde(with = "uuid_u128_little_endian")]
     pub uuid: Uuid,
 
     pub key: Vec<u8>,
@@ -91,7 +91,7 @@ impl UuidIndex {
     }
 }
 
-mod u128_little_endian {
+mod uuid_u128_little_endian {
     use std::fmt;
 
     use serde::{de, Deserializer, Serializer};

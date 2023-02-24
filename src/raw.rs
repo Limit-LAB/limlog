@@ -2,10 +2,12 @@ use std::{fs::File, path::Path};
 
 use fs2::FileExt;
 use memmap2::{MmapOptions, MmapRaw};
+use tracing::debug;
 
 use crate::{consts::HEADER_SIZE, error::Result, formats::Header};
 
 /// A wrapper for [`MmapRaw`], with a 16-byte header.
+#[derive(Debug)]
 pub(crate) struct RawMap {
     raw: MmapRaw,
     file: File,
@@ -96,10 +98,11 @@ impl RawMap {
     }
 
     pub fn close(&self, final_len: u64) -> Result<()> {
+        debug!(final_len, map = ?self, "Closing mmap");
         // Unlock and truncate even if flush failed
         self.raw
             .flush()
-            .and(self.file.set_len(final_len))
+            .and(self.file.set_len(final_len + HEADER_SIZE as u64))
             .and(self.file.unlock())
             .map_err(Into::into)
     }

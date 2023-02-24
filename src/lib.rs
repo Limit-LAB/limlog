@@ -26,8 +26,9 @@ use event_listener::{Event, EventListener};
 use futures_core::{ready, Future, Stream};
 use kanal::SendFuture;
 use serde::{Deserialize, Serialize};
-use tap::{Conv, Pipe, TapFallible};
+use tap::{Conv, Pipe};
 use tokio::{fs, task::JoinHandle};
+use tracing::instrument;
 use uuid7::uuid7;
 
 use crate::{
@@ -157,13 +158,13 @@ impl Topic {
         Ok((log_map, appender))
     }
 
+    #[instrument(level = "trace")]
     async fn background(shared: Arc<Shared>, mut appender: Appender) -> Result<()> {
         // Remaining log that wasn't saved due to lack of file space. Will be written to
         // the next file.
         let mut rem = None;
         loop {
             // Start receiving and save logs
-
             rem = appender.run(rem).await?;
             appender.log.finish()?;
 
