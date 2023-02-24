@@ -9,6 +9,7 @@ use std::{
 use arc_swap::ArcSwap;
 use bincode::Options;
 use event_listener::{Event, EventListener};
+use tracing::instrument;
 
 use crate::{
     consts::{INDEX_SIZE, MIN_LOG_SIZE},
@@ -19,6 +20,7 @@ use crate::{
     TopicBuilder,
 };
 
+#[derive(Debug)]
 pub(crate) struct Shared {
     pub conf: TopicBuilder,
     event: Arc<Event>,
@@ -58,6 +60,7 @@ impl Shared {
 }
 
 /// Shared map for reading concurrently and writing exclusively
+#[derive(Debug)]
 pub(crate) struct SharedMap {
     map: RawMap,
     offset: AtomicUsize,
@@ -145,6 +148,7 @@ impl Drop for SharedMap {
 }
 
 /// Index map for read and write exclusively
+#[derive(Debug)]
 pub(crate) struct UniqueMap {
     map: RawMap,
     pos: usize,
@@ -181,6 +185,7 @@ impl Drop for UniqueMap {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct Appender {
     pub log: Arc<SharedMap>,
     pub idx: UniqueMap,
@@ -191,6 +196,7 @@ pub(crate) struct Appender {
 impl Appender {
     /// Run with the given [`Log`] and return the last [`Log`] if it
     /// cannot write it to log file due to file size.
+    #[instrument(level = "trace")]
     pub async fn run(&mut self, mut rem: Option<Log>) -> Result<Option<Log>> {
         let opt: BincodeOptions = bincode_option();
 

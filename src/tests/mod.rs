@@ -7,6 +7,8 @@ use std::{
 use futures::StreamExt;
 use tap::{Pipe, Tap};
 use tempfile::TempDir;
+use tokio::signal::ctrl_c;
+use tracing::info;
 
 use crate::{
     consts::{HEADER_SIZE, INDEX_SIZE},
@@ -19,20 +21,26 @@ mod format;
 
 #[tokio::test]
 async fn test_run() {
-    let dir = TempDir::new().unwrap();
-    let topic = TopicBuilder::new_with_dir("123", dir.path())
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", "DEBUG");
+    }
+
+    tracing_subscriber::fmt::try_init().pipe(|_| {});
+
+    // let dir = TempDir::new().unwrap();
+    let topic = TopicBuilder::new_with_dir("test", "/home/pop/Dev/Projects/limlog/data")
         .unwrap()
         .with_log_size(1 << 14)
         .build()
         .await
         .unwrap();
 
-    eprintln!("{:?}", topic.config());
+    info!("{:?}", topic.config());
 
     let w = topic.writer();
     let mut r = topic.reader();
 
-    eprintln!("{}", r.cursor());
+    info!("{}", r.cursor());
 
     tokio::spawn(async move {
         loop {
@@ -40,9 +48,11 @@ async fn test_run() {
         }
     });
 
-    while let Some(e) = r.next().await {
-        // eprintln!("{e:?}");
-    }
+    tokio::spawn(async move { while let Some(_) = r.next().await {} });
+
+    ctrl_c().await.unwrap();
+
+    info!("Stop");
 
     topic.abort();
 }
