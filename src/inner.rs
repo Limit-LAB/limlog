@@ -222,7 +222,7 @@ impl Appender {
     fn write_one(&mut self, opt: &BincodeOptions, log: Log) -> Result<Option<Log>> {
         let len = opt.serialized_size(&log)? as usize;
 
-        if self.log.remaining() < MIN_LOG_SIZE || self.idx.is_full() {
+        if self.log.remaining() < len || self.idx.is_full() {
             return Ok(Some(log));
         }
 
