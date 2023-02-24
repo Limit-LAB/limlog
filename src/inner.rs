@@ -23,7 +23,7 @@ use crate::{
 #[derive(Debug)]
 pub(crate) struct Shared {
     pub conf: TopicBuilder,
-    event: Arc<Event>,
+    pub event: Event,
 
     /// Pointer to the active map. This is rarely changed and is only changed
     /// when one map is full and a new map is created. Readers should keep a
@@ -34,7 +34,7 @@ pub(crate) struct Shared {
 }
 
 impl Shared {
-    pub fn new(conf: TopicBuilder, event: Arc<Event>, map: Arc<SharedMap>) -> Self {
+    pub fn new(conf: TopicBuilder, event: Event, map: Arc<SharedMap>) -> Self {
         Self {
             conf,
             event,
@@ -189,7 +189,6 @@ impl Drop for UniqueMap {
 pub(crate) struct Appender {
     pub log: Arc<SharedMap>,
     pub idx: UniqueMap,
-    pub event: Arc<Event>,
     pub recv: kanal::AsyncReceiver<Log>,
 }
 
@@ -197,18 +196,18 @@ impl Appender {
     /// Run with the given [`Log`] and return the last [`Log`] if it
     /// cannot write it to log file due to file size.
     #[instrument(level = "trace")]
-    pub async fn run(&mut self, mut rem: Option<Log>) -> Result<Option<Log>> {
+    pub async fn run(&mut self, mut rem: Option<Log>, event: &Event) -> Result<Option<Log>> {
         let opt: BincodeOptions = bincode_option();
 
         if let Some(log) = rem.take() {
-            if let Some(rem) = self.write_one(&opt, log)? {
+            if let Some(rem) = self.write_one(&opt, log, event)? {
                 return Ok(Some(rem));
             }
         }
 
         loop {
             let log = self.recv.recv().await?;
-            if let Some(rem) = self.write_one(&opt, log)? {
+            if let Some(rem) = self.write_one(&opt, log, event)? {
                 return Ok(Some(rem));
             }
 
@@ -219,7 +218,7 @@ impl Appender {
         }
     }
 
-    fn write_one(&mut self, opt: &BincodeOptions, log: Log) -> Result<Option<Log>> {
+    fn write_one(&mut self, opt: &BincodeOptions, log: Log, event: &Event) -> Result<Option<Log>> {
         let len = opt.serialized_size(&log)? as usize;
 
         if self.log.remaining() < len || self.idx.is_full() {
@@ -241,7 +240,7 @@ impl Appender {
         })?;
 
         // Write successfully, notify all pending readers
-        self.event.notify_additional(usize::MAX);
+        event.notify_additional(usize::MAX);
 
         Ok(None)
     }

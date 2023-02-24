@@ -112,8 +112,8 @@ impl Topic {
         let dir = conf.topic_dir();
         fs::create_dir_all(&dir).await?;
 
-        let event = Event::new().pipe(Arc::new);
-        let (log_map, appender) = Self::make(&conf, event.clone(), recv)?;
+        let event = Event::new();
+        let (log_map, appender) = Self::make(&conf, recv)?;
         let shared = Arc::new(Shared::new(conf, event, log_map));
         let handle = tokio::spawn(Self::background(shared.clone(), appender));
 
@@ -130,7 +130,6 @@ impl Topic {
 
     fn make(
         conf: &TopicBuilder,
-        event: Arc<Event>,
         recv: kanal::AsyncReceiver<Log>,
     ) -> Result<(Arc<SharedMap>, Appender)> {
         let filename = uuid7().encode();
@@ -144,7 +143,6 @@ impl Topic {
         let appender = Appender {
             log: log_map.clone(),
             idx: idx_map,
-            event,
             recv,
         };
 
@@ -158,13 +156,8 @@ impl Topic {
         let mut rem = None;
         loop {
             // Start receiving and save logs
-            rem = appender.run(rem).await?;
-            let Appender {
-                log,
-                event,
-                recv,
-                idx,
-            } = appender;
+            rem = appender.run(rem, &shared.event).await?;
+            let Appender { log, recv, idx } = appender;
 
             // Close the log file and flush to disk
             idx.drop();
@@ -172,7 +165,7 @@ impl Topic {
             log.finish()?;
 
             // Log file is full, create a new one
-            let (map, app) = Self::make(&shared.conf, event, recv)?;
+            let (map, app) = Self::make(&shared.conf, recv)?;
 
             appender = app;
             shared.swap_map(map);
