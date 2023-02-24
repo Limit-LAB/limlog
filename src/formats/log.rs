@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use uuid7::Uuid;
+use uuid7::{uuid7, Uuid};
 
 use crate::{
     consts::{HEADER_SIZE, INDEX_MAGIC, INDEX_SIZE, LOG_MAGIC},
@@ -10,9 +10,23 @@ use crate::{
 pub struct Log {
     #[serde(with = "uuid_u128_little_endian")]
     pub uuid: Uuid,
+    pub body: Vec<u8>,
+}
 
-    pub key: Vec<u8>,
-    pub value: Vec<u8>,
+impl Log {
+    #[inline]
+    pub fn new(body: impl Into<Vec<u8>>) -> Self {
+        Self {
+            uuid: uuid7(),
+            body: body.into(),
+        }
+    }
+
+    /// Specialized short cut of `bincode::Options::serialized_size()`
+    #[inline]
+    pub fn byte_len(&self) -> usize {
+        24 + self.body.len()
+    }
 }
 
 #[repr(C, align(8))]
@@ -124,4 +138,19 @@ mod uuid_u128_little_endian {
             Ok(Self::Value::from(value.to_le_bytes()))
         }
     }
+}
+
+#[test]
+fn test_log_size() {
+    use bincode::Options;
+
+    let log = Log::default();
+    let len = crate::bincode_option().serialized_size(&log).unwrap();
+
+    assert_eq!(len, log.byte_len() as _);
+
+    let log = Log::new(vec![1, 1, 4, 5, 1, 4]);
+    let len = crate::bincode_option().serialized_size(&log).unwrap();
+
+    assert_eq!(len, log.byte_len() as _);
 }

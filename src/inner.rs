@@ -224,7 +224,7 @@ impl Appender {
     }
 
     fn write_one(&mut self, opt: BincodeOptions, log: Log, event: &Event) -> Result<Option<Log>> {
-        let len = opt.serialized_size(&log)? as usize;
+        let len = log.byte_len();
 
         if self.log.remaining() < len || self.idx.is_full() {
             return Ok(Some(log));
@@ -268,15 +268,14 @@ fn test_map() {
 
     let l = Log {
         uuid: Uuid::MAX,
-        key: vec![114],
-        value: vec![191],
+        body: vec![114, 191],
     };
 
     bincode_option().serialize_into(&mut w[..], &l).unwrap();
 
     let counter = [
-        255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 1, 0, 0, 0,
-        0, 0, 0, 0, 114, 1, 0, 0, 0, 0, 0, 0, 0, 191,
+        255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 2, 0, 0, 0,
+        0, 0, 0, 0, 114, 191,
     ];
 
     assert_eq!(&counter[..], &w[..counter.len()]);
