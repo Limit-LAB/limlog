@@ -1,5 +1,4 @@
-// Features only used in test
-#![cfg_attr(test, feature(cursor_remaining))]
+#![doc = include_str!("../README.md")]
 // Features
 #![allow(incomplete_features)]
 #![feature(io_error_more)]
