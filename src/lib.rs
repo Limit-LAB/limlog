@@ -112,6 +112,7 @@ impl TopicBuilder {
     }
 }
 
+#[derive(Debug)]
 pub struct Topic {
     shared: Arc<Shared>,
     handle: JoinHandle<Result<()>>,
@@ -253,6 +254,7 @@ impl Writer {
 }
 
 pin_project_lite::pin_project! {
+    #[derive(Debug)]
     pub struct Reader {
         #[pin]
         notify: EventListener,
@@ -274,6 +276,19 @@ impl Reader {
 
     pub const fn cursor(&self) -> usize {
         self.read_at
+    }
+}
+
+impl Clone for Reader {
+    /// Clone the reader which will have the same read position and map. For
+    /// fresh map, use [`Topic::reader`] or [`Topic::reader_at`] instead.
+    fn clone(&self) -> Self {
+        Self {
+            notify: self.shared.subscribe(),
+            read_at: self.read_at,
+            map: self.map.clone(),
+            shared: self.shared.clone(),
+        }
     }
 }
 
