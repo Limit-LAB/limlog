@@ -190,6 +190,11 @@ impl Topic {
         }
     }
 
+    pub async fn write_one(&self, log: Log) -> Result<()> {
+        self.send.send(log).await?;
+        Ok(())
+    }
+
     pub fn writer(&self) -> Writer {
         Writer {
             send: self.send.clone(),
