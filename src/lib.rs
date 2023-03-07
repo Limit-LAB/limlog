@@ -46,13 +46,13 @@ use crate::{
     util::Discard,
 };
 
-/// Builds [Topic] with custom configuration values.
+/// Builds [`Topic`] with custom configuration values.
 ///
 /// Methods can be chained in order to set the configuration values.
-/// The [Topic] is constructed by calling [TopicBuilder::build].
+/// The [`Topic`] is constructed by calling [TopicBuilder::build].
 ///
-/// New instances of [TopicBuilder] are obtained via [TopicBuilder::new],
-/// [TopicBuilder::new_with_dir] or [Topic::builder].
+/// New instances of [`TopicBuilder`] are obtained via [`TopicBuilder::new`],
+/// [`TopicBuilder::new_with_dir`] or [`Topic::builder`].
 ///
 /// ```ignore
 /// let _topic = Topic::builder("test")
@@ -75,14 +75,14 @@ pub struct TopicBuilder {
 }
 
 impl TopicBuilder {
-    /// Returns a new [TopicBuilder] with `topic` and current working directory.
+    /// Returns a new [`TopicBuilder`] with `topic` and current working directory.
     ///
     /// Configuration methods can be chained on the return value.
     pub fn new(topic: impl Into<String>) -> Result<Self> {
         Self::new_with_dir(topic, std::env::current_dir()?)
     }
 
-    /// Returns a new [TopicBuilder] with `topic` and `dir`.
+    /// Returns a new [`TopicBuilder`] with `topic` and `dir`.
     ///
     /// Configuration methods can be chained on the return value.
     pub fn new_with_dir(topic: impl Into<String>, dir: impl Into<PathBuf>) -> Result<Self> {
@@ -102,7 +102,7 @@ impl TopicBuilder {
         })
     }
 
-    /// Specify the topic working directory
+    /// Specify the topic working directory.
     pub fn with_directory(mut self, dir: impl Into<PathBuf>) -> Result<Self> {
         self.dir = dir.into();
         if !self.dir.is_dir() {
@@ -113,13 +113,13 @@ impl TopicBuilder {
         Ok(self)
     }
 
-    /// Set log file max size
+    /// Set log file max size.
     pub const fn with_log_size(mut self, log_size: u64) -> Self {
         self.log_size = log_size;
         self
     }
 
-    /// Set index file max size
+    /// Set index file max size.
     pub const fn with_index_size(mut self, index_size: u64) -> Self {
         self.index_size = index_size;
         self
@@ -138,7 +138,7 @@ impl TopicBuilder {
         self.dir.join(&self.topic)
     }
 
-    /// Construct a [Topic] instant if configurations is valid.
+    /// Construct a [`Topic`] instant if configurations is valid.
     pub async fn build(self) -> Result<Topic> {
         Topic::new(self).await
     }
@@ -153,7 +153,7 @@ pub struct Topic {
 }
 
 impl Topic {
-    /// Returns a new [TopicBuilder] with `topic` and current working directory.
+    /// Returns a new [`TopicBuilder`] with `topic` and current working directory.
     ///
     /// Configuration methods can be chained on the return value.
     pub fn builder(topic: impl Into<String>) -> Result<TopicBuilder> {
@@ -230,13 +230,13 @@ impl Topic {
         }
     }
 
-    /// Write a [Log] asynchronous.
+    /// Write a [`Log`] asynchronous.
     pub async fn write_one(&self, log: Log) -> Result<()> {
         self.send.send(log).await?;
         Ok(())
     }
 
-    /// Returns the [Writer] to write logs.
+    /// Returns the [`Writer`] to write logs.
     /// 
     /// ```ignore
     /// let w = topic.writer();
@@ -251,7 +251,7 @@ impl Topic {
         }
     }
 
-    /// Returns the [Reader] to read logs.
+    /// Returns the [`Reader`] to read logs.
     /// 
     /// ```ignore
     /// use futures::StreamExt;
@@ -270,7 +270,7 @@ impl Topic {
         }
     }
 
-    /// Create a [Reader] by given offset.
+    /// Create a [`Reader`] by given offset.
     pub fn reader_at(&self, read_at: usize) -> Result<Reader> {
         let offset = self.shared.offset();
         if read_at > offset {
@@ -353,7 +353,7 @@ impl Reader {
 
 impl Clone for Reader {
     /// Clone the reader which will have the same read position and map. For
-    /// fresh map, use [Topic::reader] or [Topic::reader_at] instead.
+    /// fresh map, use [`Topic::reader`] or [`Topic::reader_at`] instead.
     fn clone(&self) -> Self {
         Self {
             notify: self.shared.subscribe(),
