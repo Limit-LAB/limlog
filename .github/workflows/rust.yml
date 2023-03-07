@@ -1,0 +1,94 @@
+name: Rust
+
+on:
+  push:
+
+  pull_request:
+    types:
+      - review_requested
+      - ready_for_review
+      - opened
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.event.head_commit.message, '[skip-ci]') }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Install toolchain
+      uses: actions-rs/rust-toolchain@1
+      with:
+        targets: x86_64-pc-windows-gnu
+        components: clippy, rustfmt
+
+    - name: Run checks
+      env:
+        CLIPPY_OPTS: --all-targets -- --allow clippy::len_without_is_empty --allow clippy::missing_safety_doc
+      run: |
+        cargo fmt --check
+        cargo clippy $CLIPPY_OPTS
+
+  test-win:
+    runs-on: windows-latest
+    if: ${{ !contains(github.event.head_commit.message, '[skip-ci]') }}
+    strategy:
+      matrix:
+        target:
+          - i686-pc-windows-gnu
+          - i686-pc-windows-msvc
+          - x86_64-pc-windows-gnu
+          - x86_64-pc-windows-msvc
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Install toolchain
+      uses: actions-rs/rust-toolchain@1
+      with:
+        toolchain: nightly-${{ matrix.target }}
+
+    - name: Run tests
+      run: cargo test --workspace -- --test-threads=1 --nocapture
+
+  test-macos:
+    runs-on: macos-latest
+    if: ${{ !contains(github.event.head_commit.message, '[skip-ci]') }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Install toolchain
+      uses: actions-rs/rust-toolchain@1
+
+    - name: Run tests
+      run: cargo test --workspace -- --test-threads=1 --nocapture
+
+  test-linux:
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.event.head_commit.message, '[skip-ci]') }}
+    strategy:
+      matrix:
+        target:
+          - i686-unknown-linux-gnu
+          - x86_64-unknown-linux-gnu
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Install toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: nightly-${{ matrix.target }}
+
+    - name: Install multilib
+      if: ${{ matrix.target == 'i686-unknown-linux-gnu' }}
+      run: sudo apt install gcc-multilib
+
+    - name: Run tests
+      run: cargo test --workspace -- --test-threads=1 --nocapture
