@@ -1,9 +1,8 @@
 # LIMLOG
 
-高性能日志存储系统，用于存储顺序消息并提供查询功能
-64bit optimized
+High-performance log storage system for storing sequential messages and providing query functions, 64bit optimized.
 
-提供两种日志格式:
+Two log formats are available:
 
 1. `<start_uuid>.limlog` `<start_uuid>.idx` 用于存储顺序消息
 2. TODO
