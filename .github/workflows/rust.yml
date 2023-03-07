@@ -24,12 +24,13 @@ jobs:
     - name: Install toolchain
       uses: actions-rs/toolchain@v1
       with:
+        override: true
         targets: nightly
         components: clippy, rustfmt
 
     - name: Run checks
       env:
-        CLIPPY_OPTS: --all-targets -- --allow clippy::len_without_is_empty --allow clippy::missing_safety_doc
+        CLIPPY_OPTS: --all-targets
       run: |
         cargo fmt --check
         cargo clippy $CLIPPY_OPTS
@@ -84,7 +85,7 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Install toolchain
-      uses: dtolnay/rust-toolchain@master
+      uses: actions-rs/toolchain@v1
       with:
         toolchain: nightly-${{ matrix.target }}
 
