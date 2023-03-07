@@ -147,7 +147,7 @@ impl SharedMap {
 
 impl Drop for SharedMap {
     fn drop(&mut self) {
-        self.map.close(self.offset() as _).unwrap();
+        unsafe { self.map.close(self.offset() as _) }.unwrap();
     }
 }
 
@@ -186,7 +186,7 @@ impl UniqueMap {
 
 impl Drop for UniqueMap {
     fn drop(&mut self) {
-        self.map.close(self.pos as _).unwrap();
+        unsafe { self.map.close(self.pos as _) }.unwrap();
     }
 }
 

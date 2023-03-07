@@ -1,7 +1,8 @@
-use std::{fs::File, path::Path};
+use std::{fs::File, mem::ManuallyDrop, path::Path};
 
 use fs2::FileExt;
 use memmap2::{MmapOptions, MmapRaw};
+use tap::{Pipe, Tap};
 use tracing::trace;
 
 use crate::{consts::HEADER_SIZE, error::Result, formats::Header};
@@ -9,7 +10,7 @@ use crate::{consts::HEADER_SIZE, error::Result, formats::Header};
 /// A wrapper for [`MmapRaw`], with a 16-byte header.
 #[derive(Debug)]
 pub struct RawMap {
-    raw: MmapRaw,
+    raw: ManuallyDrop<MmapRaw>,
     file: File,
 }
 
@@ -24,7 +25,7 @@ impl RawMap {
             .open(path)?;
         file.try_lock_exclusive()?;
         file.set_len(size + HEADER_SIZE as u64)?;
-        let raw = MmapOptions::new().map_raw(&file)?;
+        let raw = MmapOptions::new().map_raw(&file)?.pipe(ManuallyDrop::new);
         let this = Self { raw, file };
         this.write_header(header);
         Ok(this)
@@ -104,11 +105,20 @@ impl RawMap {
         std::slice::from_raw_parts_mut(self.as_mut_ptr().add(offset), len)
     }
 
-    pub fn close(&self, final_len: u64) -> Result<()> {
+    /// Like `Drop`, but close the file with specified length. This is intended
+    /// to be used in `Drop` implementations of other wrapper types, and
+    /// caller must guarantee that this will only run once.
+    ///
+    /// # Safety
+    ///
+    /// This function can only be called once.
+    pub unsafe fn close(&mut self, final_len: u64) -> Result<()> {
         trace!(final_len, map = ?self, "Closing mmap");
+
         // Unlock and truncate even if flush failed
         self.raw
             .flush()
+            .tap(|_| ManuallyDrop::drop(&mut self.raw)) // Drop the mmap before unlocking the file so that windows won't complain
             .and(self.file.set_len(final_len + HEADER_SIZE as u64))
             .and(self.file.unlock())
             .map_err(Into::into)
