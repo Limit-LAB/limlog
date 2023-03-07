@@ -1,10 +1,12 @@
 # LIMLOG
 
+[![Rust](https://github.com/Limit-LAB/limlog/actions/workflows/rust.yml/badge.svg?branch=master)](https://github.com/Limit-LAB/limlog/actions/workflows/rust.yml)
+
 High-performance log storage system for storing sequential messages and providing query functions, 64bit optimized.
 
 Two log formats are available:
 
-1. `<start_uuid>.limlog` `<start_uuid>.idx` 用于存储顺序消息
+1. `<start_uuid>.limlog` and `<start_uuid>.idx` are used to store sequential messages.
 2. TODO
 
 ## Files Format
