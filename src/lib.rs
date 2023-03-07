@@ -127,7 +127,7 @@ impl TopicBuilder {
 
     /// Set channel max size.
     /// 
-    /// The [Writer] will block if the channel is full until write request is consumed.
+    /// The [`Writer`] will block if the channel is full until write request is consumed.
     pub const fn with_channel_size(mut self, channel_size: u32) -> Self {
         self.channel_size = channel_size;
         self
@@ -292,7 +292,7 @@ impl Topic {
     }
 
     /// Abort background task which is writing logs.
-    /// After this operation there should be no more writes.
+    /// There should be no more appender and all writing operation will fail.
     /// 
     /// Notice that background task may not abort immediately.
     pub fn abort(&self) {
