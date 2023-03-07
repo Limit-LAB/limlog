@@ -24,7 +24,7 @@ jobs:
     - name: Install toolchain
       uses: actions-rs/toolchain@v1
       with:
-        targets: x86_64-pc-windows-gnu
+        targets: nightly
         components: clippy, rustfmt
 
     - name: Run checks
@@ -65,6 +65,8 @@ jobs:
 
     - name: Install toolchain
       uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
 
     - name: Run tests
       run: cargo test --workspace -- --test-threads=1 --nocapture
