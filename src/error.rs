@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+/// The Limlog error type.
 #[derive(Debug, Error)]
 pub enum ErrorType {
     #[error("IO error: {0}")]
@@ -18,4 +19,5 @@ pub enum ErrorType {
     Bincode(#[from] bincode::Error),
 }
 
+/// A specialized [`Result`] type for Limlog.
 pub type Result<T, E = ErrorType> = std::result::Result<T, E>;

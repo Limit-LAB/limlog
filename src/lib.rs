@@ -49,7 +49,7 @@ use crate::{
 /// Builds [`Topic`] with custom configuration values.
 ///
 /// Methods can be chained in order to set the configuration values.
-/// The [`Topic`] is constructed by calling [TopicBuilder::build].
+/// The [`Topic`] is constructed by calling [`TopicBuilder::build`].
 ///
 /// New instances of [`TopicBuilder`] are obtained via [`TopicBuilder::new`],
 /// [`TopicBuilder::new_with_dir`] or [`Topic::builder`].
@@ -160,9 +160,9 @@ impl Topic {
         TopicBuilder::new(topic)
     }
 
-    /// Create a new [Topic] with [TopicBuilder].
+    /// Create a new [`Topic`] with [`TopicBuilder`].
     /// 
-    /// Equivalent to [TopicBuilder::build].
+    /// Equivalent to [`TopicBuilder::build`].
     pub async fn new(conf: TopicBuilder) -> Result<Self> {
         let (send, recv) = kanal::bounded_async(conf.channel_size as _);
 
