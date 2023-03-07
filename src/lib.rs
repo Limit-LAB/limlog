@@ -75,7 +75,8 @@ pub struct TopicBuilder {
 }
 
 impl TopicBuilder {
-    /// Returns a new [`TopicBuilder`] with `topic` and current working directory.
+    /// Returns a new [`TopicBuilder`] with `topic` and current working
+    /// directory.
     ///
     /// Configuration methods can be chained on the return value.
     pub fn new(topic: impl Into<String>) -> Result<Self> {
@@ -126,8 +127,9 @@ impl TopicBuilder {
     }
 
     /// Set channel max size.
-    /// 
-    /// The [`Writer`] will block if the channel is full until write request is consumed.
+    ///
+    /// The [`Writer`] will block if the channel is full until write request is
+    /// consumed.
     pub const fn with_channel_size(mut self, channel_size: u32) -> Self {
         self.channel_size = channel_size;
         self
@@ -153,7 +155,8 @@ pub struct Topic {
 }
 
 impl Topic {
-    /// Returns a new [`TopicBuilder`] with `topic` and current working directory.
+    /// Returns a new [`TopicBuilder`] with `topic` and current working
+    /// directory.
     ///
     /// Configuration methods can be chained on the return value.
     pub fn builder(topic: impl Into<String>) -> Result<TopicBuilder> {
@@ -161,7 +164,7 @@ impl Topic {
     }
 
     /// Create a new [`Topic`] with [`TopicBuilder`].
-    /// 
+    ///
     /// Equivalent to [`TopicBuilder::build`].
     pub async fn new(conf: TopicBuilder) -> Result<Self> {
         let (send, recv) = kanal::bounded_async(conf.channel_size as _);
@@ -237,7 +240,7 @@ impl Topic {
     }
 
     /// Returns the [`Writer`] to write logs.
-    /// 
+    ///
     /// ```ignore
     /// let w = topic.writer();
     /// loop {
@@ -252,7 +255,7 @@ impl Topic {
     }
 
     /// Returns the [`Reader`] to read logs.
-    /// 
+    ///
     /// ```ignore
     /// use futures::StreamExt;
     /// let r = topic.reader();
@@ -293,14 +296,14 @@ impl Topic {
 
     /// Abort background task which is writing logs.
     /// There should be no more appender and all writing operation will fail.
-    /// 
+    ///
     /// Notice that background task may not abort immediately.
     pub fn abort(&self) {
         self.handle.abort();
     }
 
     /// Wait for background task to complete.
-    /// 
+    ///
     /// # Panics
     /// Panics if the background task panicked.
     pub async fn join(self) -> Result<()> {
