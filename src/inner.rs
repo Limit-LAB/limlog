@@ -11,7 +11,7 @@ use std::{
 use arc_swap::ArcSwap;
 use bincode::Options;
 use event_listener::{Event, EventListener};
-use tracing::instrument;
+use tokio::{select, sync::Notify};
 
 use crate::{
     consts::{INDEX_SIZE, MIN_LOG_SIZE},
@@ -19,13 +19,14 @@ use crate::{
     formats::{Header, Log, UuidIndex},
     raw::RawMap,
     util::{bincode_option, BincodeOptions},
-    TopicBuilder,
+    ErrorType, TopicBuilder,
 };
 
 #[derive(Debug)]
 pub struct Shared {
     pub conf: TopicBuilder,
     pub event: Event,
+    pub stop: Notify,
 
     /// Pointer to the active map. This is rarely changed and is only changed
     /// when one map is full and a new map is created. Readers should keep a
@@ -36,10 +37,11 @@ pub struct Shared {
 }
 
 impl Shared {
-    pub fn new(conf: TopicBuilder, event: Event, map: Arc<SharedMap>) -> Self {
+    pub fn new(conf: TopicBuilder, map: Arc<SharedMap>) -> Self {
         Self {
             conf,
-            event,
+            event: Event::new(),
+            stop: Notify::new(),
             map: ArcSwap::from(map),
         }
     }
@@ -101,8 +103,9 @@ impl SharedMap {
     pub unsafe fn mut_slice(&self) -> &mut [u8] {
         let at = self.offset();
         debug_assert!(at <= self.map.len());
+        let len = self.map.len() - at;
 
-        std::slice::from_raw_parts_mut(self.map.as_mut_ptr().add(at), self.map.len() - at)
+        std::slice::from_raw_parts_mut(self.map.as_mut_ptr().add(at), len)
     }
 
     /// Get the slice of the map from the given offset
@@ -200,19 +203,23 @@ pub struct Appender {
 impl Appender {
     /// Run with the given [`Log`] and return the last [`Log`] if it
     /// cannot write it to log file due to file size.
-    #[instrument(level = "trace")]
-    pub async fn run(&mut self, mut rem: Option<Log>, event: &Event) -> Result<Option<Log>> {
+    // #[instrument(level = "trace")]
+    pub async fn run(&mut self, mut rem: Option<Log>, shared: &Shared) -> Result<Option<Log>> {
         let opt: BincodeOptions = bincode_option();
 
         if let Some(log) = rem.take() {
-            if let Some(rem) = self.write_one(opt, log, event)? {
+            if let Some(rem) = self.write_one(opt, log, &shared.event)? {
                 return Ok(Some(rem));
             }
         }
 
         loop {
-            let log = self.recv.recv().await?;
-            if let Some(rem) = self.write_one(opt, log, event)? {
+            let log = select!(
+                received = self.recv.recv() => received?,
+                _ = shared.stop.notified() => return Err(ErrorType::Shutdown)
+            );
+
+            if let Some(rem) = self.write_one(opt, log, &shared.event)? {
                 return Ok(Some(rem));
             }
 
@@ -232,10 +239,11 @@ impl Appender {
 
         let offset = self.log.offset() as _;
 
-        // SAFETY: We are the only one accessing the mutable portion of mmap
-        let buf = unsafe { self.log.mut_slice() };
-
-        opt.serialize_into(&mut buf[..len], &log)?;
+        {
+            // SAFETY: We are the only one accessing the mutable portion of mmap
+            let buf = unsafe { self.log.mut_slice() };
+            opt.serialize_into(&mut buf[..len], &log)?;
+        }
 
         // Commit map. If commit failed, leave index untouched
         self.log.commit(len)?;

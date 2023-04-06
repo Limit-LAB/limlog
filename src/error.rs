@@ -17,6 +17,9 @@ pub enum ErrorType {
 
     #[error("Bincode error: {0}")]
     Bincode(#[from] bincode::Error),
+
+    #[error("Shutdown signal issued")]
+    Shutdown,
 }
 
 /// A specialized [`Result`] type for Limlog.

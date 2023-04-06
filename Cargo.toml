@@ -4,23 +4,33 @@ version = "0.3.1"
 edition = "2021"
 
 [dependencies]
-arc-swap         = "1.6.0"
-bincode          = "1.3"
-event-listener   = "2.5.3"
-fs2              = "0.4.3"
-memmap2          = "0.5.8"
+
+## Serialization
+bincode = "1.3"
+serde   = { version = "1", features = ["derive"] }
+
+## Syncing
+event-listener = "2.5.3"
+arc-swap       = "1.6.0"
+
+## fs & mmap
+fs2     = "0.4.3"
+memmap2 = "0.5.8"
+
+## Utils
 mod_use          = "0.2.1"
 pin-project-lite = "0.2.9"
 tap              = "1.0.1"
-thiserror        = "1.0"
 
-serde    = { version = "1", features = ["derive"] }
+## Error handling
+thiserror = "1.0"
+
 smallvec = { version = "1.10", features = ["union", "const_new", "const_generics", "specialization"] }
 uuid7    = { version = "0.4.0", features = ["serde"] }
 
 futures-core = { version = "0.3.26", default-features = false }
 kanal        = { version = "0.1.0-pre8", default-features = false, features = ["async"] }
-tokio        = { version = "1", default-features = false, features = ["fs", "rt"] }
+tokio        = { version = "1", default-features = false, features = ["fs", "rt", "sync", "macros"] }
 tracing      = { version = "0.1.37", features = ["log"] }
 
 [dev-dependencies]

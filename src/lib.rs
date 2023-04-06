@@ -28,7 +28,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use event_listener::{Event, EventListener};
+use event_listener::EventListener;
 use futures_core::{ready, Future, Stream};
 use inner::{Appender, Shared, SharedMap};
 use kanal::SendFuture;
@@ -146,7 +146,9 @@ impl TopicBuilder {
     }
 }
 
-/// The topic which is used to read and write logs.
+/// The topic which is used to read and write logs. Background task will keep
+/// running even if this struct is dropped. To stop the task, call
+/// [`stop`](Topic::stop) or [`abort`](Topic::abort).
 #[derive(Debug)]
 pub struct Topic {
     shared: Arc<Shared>,
@@ -172,9 +174,8 @@ impl Topic {
         let dir = conf.topic_dir();
         fs::create_dir_all(&dir).await?;
 
-        let event = Event::new();
         let (log_map, appender) = Self::make(&conf, recv)?;
-        let shared = Arc::new(Shared::new(conf, event, log_map));
+        let shared = Arc::new(Shared::new(conf, log_map));
         let handle = tokio::spawn(Self::background(shared.clone(), appender));
 
         Ok(Self {
@@ -182,11 +183,6 @@ impl Topic {
             handle,
             send,
         })
-    }
-
-    /// Returns the topic configurations.
-    pub fn config(&self) -> &TopicBuilder {
-        &self.shared.conf
     }
 
     fn make(
@@ -217,7 +213,8 @@ impl Topic {
         let mut rem = None;
         loop {
             // Start receiving and save logs
-            rem = appender.run(rem, &shared.event).await?;
+            rem = appender.run(rem, &shared).await?;
+
             let Appender { log, recv, idx } = appender;
 
             // Close the log file and flush to disk
@@ -294,15 +291,32 @@ impl Topic {
         })
     }
 
-    /// Abort background task which is writing logs.
-    /// There should be no more appender and all writing operation will fail.
-    ///
-    /// Notice that background task may not abort immediately.
+    /// Returns the topic configurations.
+    pub fn config(&self) -> &TopicBuilder {
+        &self.shared.conf
+    }
+
+    /// Issue a stop signal to the background task. This will return immediately
+    /// but the task can take time to finish. Use with [`join`](Topic::join) to
+    /// gracefully shutdown.
+    pub fn stop(&self) -> Result<()> {
+        self.shared.stop.notify_waiters();
+
+        Ok(())
+    }
+
+    /// Check if the background task is finished.
+    pub fn stopped(&self) -> bool {
+        self.handle.is_finished()
+    }
+
+    /// Abort background task.
     pub fn abort(&self) {
         self.handle.abort();
     }
 
-    /// Wait for background task to complete.
+    /// Wait for background task to complete. This can be used with
+    /// [`stop`](Topic::stop) to gracefully shutdown.
     ///
     /// # Panics
     /// Panics if the background task panicked.
@@ -312,6 +326,7 @@ impl Topic {
     }
 }
 
+/// A writer to write logs to a topic.
 #[derive(Clone, Debug)]
 pub struct Writer {
     send: kanal::AsyncSender<Log>,
@@ -328,6 +343,7 @@ impl Writer {
 }
 
 pin_project_lite::pin_project! {
+    /// A reader to read logs from a topic with [`Stream`] interface.
     #[derive(Debug)]
     pub struct Reader {
         #[pin]
