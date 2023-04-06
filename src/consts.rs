@@ -1,3 +1,5 @@
+use smallvec::SmallVec;
+
 pub const INDEX_MAGIC: &[u8; 8] = b"LIM_IDX\0";
 pub const LOG_MAGIC: &[u8; 8] = b"LIM_LOG\0";
 
@@ -18,3 +20,5 @@ pub const DEFAULT_INDEX_SIZE: u64 = 1 << 24;
 
 /// Default size of the channel, 16 items.
 pub const DEFAULT_CHANNEL_SIZE: u32 = 1 << 4;
+
+pub type SmallBytes = SmallVec<[u8; 62]>;

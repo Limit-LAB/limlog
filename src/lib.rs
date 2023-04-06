@@ -40,7 +40,9 @@ use uuid7::uuid7;
 
 pub use crate::util::{bincode_option, try_decode, BincodeOptions};
 use crate::{
-    consts::{DEFAULT_CHANNEL_SIZE, DEFAULT_INDEX_SIZE, DEFAULT_LOG_SIZE, MIN_LOG_SIZE},
+    consts::{
+        SmallBytes, DEFAULT_CHANNEL_SIZE, DEFAULT_INDEX_SIZE, DEFAULT_LOG_SIZE, MIN_LOG_SIZE,
+    },
     formats::Log,
     inner::UniqueMap,
     util::Discard,
@@ -240,8 +242,9 @@ impl Topic {
     ///
     /// ```ignore
     /// let w = topic.writer();
+    ///
     /// loop {
-    ///     // topic.write_one(Log { uuid: uuid7(), body: "hello".into() }).await.unwrap();
+    // /    topic.write_one(Log { uuid: uuid7(), body: "hello".as_bytes() }).await.unwrap();
     ///     w.write("hello").await.unwrap();
     /// }
     /// ```
@@ -255,6 +258,7 @@ impl Topic {
     ///
     /// ```ignore
     /// use futures::StreamExt;
+    ///
     /// let r = topic.reader();
     /// let log = r.next().await.unwrap().unwrap();
     /// ```
@@ -334,7 +338,7 @@ pub struct Writer {
 
 impl Writer {
     /// Write log with `body` and generated UUID.
-    pub fn write(&self, body: impl Into<Vec<u8>>) -> SendFuture<'_, Log> {
+    pub fn write(&self, body: impl Into<SmallBytes>) -> SendFuture<'_, Log> {
         self.send.send(Log {
             uuid: uuid7(),
             body: body.into(),

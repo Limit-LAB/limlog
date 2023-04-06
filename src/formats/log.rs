@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use uuid7::{uuid7, Uuid};
 
 use crate::{
-    consts::{HEADER_SIZE, INDEX_MAGIC, INDEX_SIZE, LOG_MAGIC},
+    consts::{SmallBytes, HEADER_SIZE, INDEX_MAGIC, INDEX_SIZE, LOG_MAGIC},
     util::SubArray,
 };
 
@@ -10,12 +10,12 @@ use crate::{
 pub struct Log {
     #[serde(with = "uuid_u128_little_endian")]
     pub uuid: Uuid,
-    pub body: Vec<u8>,
+    pub body: SmallBytes,
 }
 
 impl Log {
     #[inline]
-    pub fn new(body: impl Into<Vec<u8>>) -> Self {
+    pub fn new(body: impl Into<SmallBytes>) -> Self {
         Self {
             uuid: uuid7(),
             body: body.into(),

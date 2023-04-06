@@ -14,7 +14,7 @@ use event_listener::{Event, EventListener};
 use tokio::{select, sync::Notify};
 
 use crate::{
-    consts::{INDEX_SIZE, MIN_LOG_SIZE},
+    consts::{SmallBytes, INDEX_SIZE, MIN_LOG_SIZE},
     error::Result,
     formats::{Header, Log, UuidIndex},
     raw::RawMap,
@@ -276,7 +276,7 @@ fn test_map() {
 
     let l = Log {
         uuid: Uuid::MAX,
-        body: vec![114, 191],
+        body: SmallBytes::from_iter([114u8, 191]),
     };
 
     bincode_option().serialize_into(&mut w[..], &l).unwrap();

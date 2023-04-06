@@ -1,9 +1,11 @@
 use bincode::Options;
 use limlog::{
     bincode_option,
+    consts::SmallBytes,
     formats::{Log, UuidIndex},
     try_decode,
 };
+use smallvec::smallvec;
 use uuid7::Uuid;
 
 mod_use::mod_use!(common);
@@ -50,21 +52,21 @@ fn test_log_format() {
     assert_eq!(
         Log {
             uuid: to_uuid(1, 0),
-            body: vec![10]
+            body: smallvec![10]
         },
         l1
     );
     assert_eq!(
         Log {
             uuid: to_uuid(2, 0),
-            body: vec![11]
+            body: smallvec![11]
         },
         l2
     );
     assert_eq!(
         Log {
             uuid: to_uuid(3, 0),
-            body: vec![12]
+            body: smallvec![12]
         },
         l3
     );
@@ -89,11 +91,11 @@ fn test_log_format() {
 fn test_ser() {
     let l1 = Log {
         uuid: Uuid::MAX,
-        body: vec![1, 1, 1, 1, 1, 1, 1, 1],
+        body: smallvec![1, 1, 1, 1, 1, 1, 1, 1],
     };
     let opt = bincode_option();
     let len = opt.serialized_size(&l1).unwrap() as usize;
-    let mut vec = vec![0u8; len];
+    let mut vec: SmallBytes = smallvec![0u8; len];
     opt.serialize_into(&mut vec[..], &l1).unwrap();
 
     eprintln!("{vec:?}");

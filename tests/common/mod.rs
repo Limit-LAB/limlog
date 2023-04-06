@@ -32,7 +32,7 @@ pub async fn write_several(n: usize) -> Result<(TempDir, PathBuf)> {
     let w = topic.writer();
 
     for _ in 0..n {
-        w.write("hello").await.unwrap();
+        w.write("hello".as_bytes()).await.unwrap();
     }
 
     Ok((dir, topic.config().topic_dir()))

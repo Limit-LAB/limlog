@@ -9,9 +9,12 @@ edition = "2021"
 bincode = "1.3"
 serde   = { version = "1", features = ["derive"] }
 
-## Syncing
+## Async & Concurrency
 event-listener = "2.5.3"
 arc-swap       = "1.6.0"
+
+kanal = { version = "0.1.0-pre8", default-features = false, features = ["async"] }
+tokio = { version = "1", default-features = false, features = ["fs", "rt", "sync", "macros"] }
 
 ## fs & mmap
 fs2     = "0.4.3"
@@ -22,19 +25,18 @@ mod_use          = "0.2.1"
 pin-project-lite = "0.2.9"
 tap              = "1.0.1"
 
+uuid7        = { version = "0.4.0", features = ["serde"] }
+smallvec     = { version = "1.10", features = ["union", "const_new", "const_generics", "specialization", "serde"] }
+futures-core = { version = "0.3.26", default-features = false }
+
 ## Error handling
 thiserror = "1.0"
 
-smallvec = { version = "1.10", features = ["union", "const_new", "const_generics", "specialization"] }
-uuid7    = { version = "0.4.0", features = ["serde"] }
-
-futures-core = { version = "0.3.26", default-features = false }
-kanal        = { version = "0.1.0-pre8", default-features = false, features = ["async"] }
-tokio        = { version = "1", default-features = false, features = ["fs", "rt", "sync", "macros"] }
-tracing      = { version = "0.1.37", features = ["log"] }
+## Logging
+tracing = { version = "0.1.37", features = ["log"] }
 
 [dev-dependencies]
-tokio   = { version = "1.25.0", features = ["full"] }
+tokio   = { version = "1", features = ["full"] }
 futures = { version = "0.3.26", default-features = false }
 
 criterion          = "0.4.0"
