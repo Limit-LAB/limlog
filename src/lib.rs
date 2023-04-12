@@ -303,10 +303,8 @@ impl Topic {
     /// Issue a stop signal to the background task. This will return immediately
     /// but the task can take time to finish. Use with [`join`](Topic::join) to
     /// gracefully shutdown.
-    pub fn stop(&self) -> Result<()> {
+    pub fn stop(&self) {
         self.shared.stop.notify_waiters();
-
-        Ok(())
     }
 
     /// Check if the background task is finished.
